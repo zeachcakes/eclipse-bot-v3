@@ -1,0 +1,17 @@
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/base:debian-12
+
+    volumes:
+      # Mount only this repo. Do not widen this to `../..:/workspaces` (as the
+      # official templates do) — that mounts the parent directory and pulls
+      # every sibling checkout into the container.
+      - ..:/workspaces/eclipse-bot-v3:cached
+      # Persist Claude Code credentials and config across container rebuilds.
+      - claude-config:/home/vscode/.claude
+
+    # Keep the container alive; without this the service exits immediately.
+    command: sleep infinity
+
+volumes:
+  claude-config:
