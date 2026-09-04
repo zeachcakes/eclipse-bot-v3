@@ -1,0 +1,40 @@
+// For format details, see https://containers.dev/implementors/json_reference/
+// Rationale for this configuration: docs/decisions/0001-local-dev-container.md
+{
+	"name": "eclipse-bot-v3",
+
+	// The image lives in docker-compose.yaml so that adding a database later is
+	// a new service rather than a migration off the `image` property.
+	"dockerComposeFile": "docker-compose.yaml",
+	"service": "app",
+
+	// Must match the bind mount target in docker-compose.yaml exactly. Compose
+	// does not interpolate ${localWorkspaceFolderBasename}, so the repo name is
+	// spelled out in both files; renaming the repo means editing both.
+	"workspaceFolder": "/workspaces/eclipse-bot-v3",
+
+	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		// Node is a dependency of the Claude Code feature, not a stack choice.
+		// Pinned to lts because the feature otherwise auto-installs Node 18,
+		// which is past end-of-life.
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "lts"
+		},
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+	},
+
+	// Named volumes mount root-owned, so the claude-config volume would not be
+	// writable by the vscode user without this.
+	"postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude",
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"anthropic.claude-code"
+			]
+		}
+	},
+
+	"remoteUser": "vscode"
+}
