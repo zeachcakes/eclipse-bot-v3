@@ -9,9 +9,13 @@ services:
       - ..:/workspaces/eclipse-bot-v3:cached
       # Persist Claude Code credentials and config across container rebuilds.
       - claude-config:/home/vscode/.claude
+      # Persist mise-installed runtimes across rebuilds. Without this, every
+      # rebuild re-downloads every tool pinned in mise.toml.
+      - mise-data:/home/vscode/.local/share/mise
 
     # Keep the container alive; without this the service exits immediately.
     command: sleep infinity
 
 volumes:
   claude-config:
+  mise-data:

@@ -1,0 +1,23 @@
+# Project runtimes, consumed inside the dev container only.
+#
+# mise is installed in the container image (see .devcontainer/devcontainer.json)
+# and deliberately NOT on the host. Keeping project toolchains off the Mac is the
+# reason the dev container exists — see docs/decisions/0001-local-dev-container.md.
+# Because the host has no mise, this file is read only inside the container and
+# no host/container config split is needed.
+#
+# .devcontainer/scripts/post-create.sh runs `mise install` against this file when
+# the container is created, and installed tools persist in the mise-data volume,
+# so a rebuild does not re-download them.
+#
+# Intentionally empty: no language, framework, or datastore has been chosen.
+# Adding a runtime here *is* the stack decision, so it warrants its own ADR
+# rather than arriving as a drive-by edit.
+#
+# Note: the image's own `node` comes from the devcontainer Feature, because the
+# Claude Code Feature depends on it. Do not pin node here to manage that. Doing
+# so would put a second node on PATH via mise's shims, and which one wins depends
+# on how the shell was started — a login shell re-prepends the Feature's nvm path,
+# while a non-interactive one leaves the shims first. Two nodes with
+# order-dependent resolution is worse than either alone.
+[tools]
