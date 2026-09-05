@@ -21,12 +21,33 @@
 		"ghcr.io/devcontainers/features/node:1": {
 			"version": "lts"
 		},
-		"ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+		// Manages project runtimes from mise.toml once a stack is chosen. Kept in
+		// the image rather than on the host, so the Mac stays free of project
+		// toolchains. Community-maintained, not from the devcontainers org.
+		"ghcr.io/jsburckhardt/devcontainer-features/mise:1": {}
 	},
 
-	// Named volumes mount root-owned, so the claude-config volume would not be
-	// writable by the vscode user without this.
-	"postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude",
+	// mise reads mise.toml from the bind-mounted workspace, which is untrusted by
+	// default — `mise install` would prompt, and fail outright with no TTY.
+	// Pre-trusting the path is the non-interactive form of `mise trust`.
+	"containerEnv": {
+		"MISE_TRUSTED_CONFIG_PATHS": "${containerWorkspaceFolder}"
+	},
+
+	// Put mise's shims on PATH. The docs prefer shims over `mise activate` for
+	// containers and IDEs: activate only applies to interactive shells, which
+	// would leave installed tools invisible to editor tooling and scripts.
+	"remoteEnv": {
+		"PATH": "/home/vscode/.local/share/mise/shims:${containerEnv:PATH}"
+	},
+
+	// The named volumes mount root-owned, so they need a chown no image layer can
+	// provide, and `mise install` needs the bind-mounted mise.toml, which does not
+	// exist at build time. Prebuild-oriented hooks (onCreateCommand,
+	// updateContentCommand) are deliberately unused — see the ADR. Invoked via
+	// `bash` so it still runs if a checkout drops the executable bit.
+	"postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
 
 	"customizations": {
 		"vscode": {

@@ -27,7 +27,10 @@ environment.
   the machine. Rejected: reproducible only by written instructions, and it puts
   project tooling into the user's global environment.
 * **Nix / devenv / devbox / mise** — genuinely reproducible without containers.
-  Rejected: steep ramp-up, and no path to a hosted environment.
+  Rejected: steep ramp-up, and no path to a hosted environment. This rejection is
+  about replacing the container, and still stands. `mise` is nevertheless used
+  *inside* the image to manage project runtimes; that is a different role and not
+  a reversal of this option.
 * **Plain `docker compose` + `docker compose exec`** — containers without the
   spec. Rejected: gives up Features, lifecycle hooks, and editor integration, and
   is not what a hosted environment would consume.
@@ -87,9 +90,33 @@ it is made — is additive.
 ### Consequences
 
 * Good, because the environment is reproducible from the repo, and nothing about
-  the toolchain depends on what happens to be installed on the host.
-* Good, because the same config is what GitHub Codespaces consumes. Moving to a
-  hosted environment later requires no change to these files.
+  the toolchain depends on what happens to be installed on the host. This is the
+  primary benefit and is deliberately absolute: the host runs no project runtime
+  and no version manager. `mise` is installed in the image, not on the Mac, so
+  `mise.toml` is inert on the host and no host/container config split is needed.
+* Good, because the stack is undecided and a container makes that cheap to change:
+  trying a runtime and abandoning it costs a rebuild rather than accumulated cruft
+  on the host.
+* Good, because development happens on the same Linux the bot will deploy to.
+  macOS is case-insensitive by default, so an entire class of "works locally,
+  breaks in production" bug is ruled out up front.
+* Good, because it bounds what an autonomous agent with shell access can reach.
+  Claude Code runs against this repo, and inside the container it cannot see the
+  host's SSH keys, documents, or browser profiles.
+* Revisit if the bot turns out to be stateless, or to need no more than SQLite. The
+  datastore argument is doing real work in this decision; without it, host-native
+  `mise` alone would be the lighter option.
+* The same config is what GitHub Codespaces consumes, so it stays compatible at
+  no cost. This is a property, **not a design driver**: hosted development is not
+  planned, and the config should not be shaped around it. Prebuilds in particular
+  are declined — they consume Actions minutes *and* storage on top of the GitHub
+  Free allowance (120 core-hours / 15 GB-month), and buy nothing locally, where
+  `devcontainer up` runs every lifecycle hook back-to-back and `devcontainer build`
+  has no lifecycle options at all. The project therefore uses a single
+  `postCreateCommand` and leaves `onCreateCommand` / `updateContentCommand` unused.
+* Reinforcing the above: Clash of Clans API keys from `developer.clashofclans.com`
+  are bound to an IP address, so a cloud development environment would break the
+  key outright. Worth confirming when the key is first registered.
 * Good, because adding a database is a new service in an existing Compose file
   rather than a restructuring of the dev container.
 * **Node.js is present in the image as a dependency of the Claude Code feature,
@@ -102,6 +129,22 @@ it is made — is additive.
   this is reversible without touching the committed config.
 * Docker Desktop's licence is free for personal use only. If this project ever
   stops being personal, the runtime choice has to be revisited.
+* A named volume is not part of any image layer, and is not captured in a
+  Codespaces prebuild snapshot either. The `chown` of the `claude-config` and
+  `mise-data` volumes therefore has to stay in `postCreateCommand`: baking it into
+  the image or moving it to `onCreateCommand` for a prebuild saving would leave a
+  fresh, root-owned volume and no remaining hook to fix it. This is the same
+  "works locally, fails hosted" shape as the `ports:` trap below.
+* Runtimes pinned in `mise.toml` are installed at container creation rather than
+  at image build, because **the workspace is not mounted while Features install** —
+  nothing during the build can read `mise.toml`. Baking them in would mean a
+  Dockerfile that `COPY`s the file and a move from `image:` to `build:` in
+  `docker-compose.yaml`; installing at creation and caching the result in the
+  `mise-data` volume gets the same practical effect without that restructuring.
+  Two supporting details are easy to miss: a bind-mounted config is untrusted, so
+  `mise install` needs `MISE_TRUSTED_CONFIG_PATHS` to avoid a prompt it cannot
+  answer; and the mise Feature adds no shell activation, so the shims directory is
+  put on `PATH` explicitly via `remoteEnv`.
 * Two traps apply when a database service is eventually added, both of which
   cost real debugging time if hit:
   * the service needs a `pg_isready` (or equivalent) healthcheck and a
