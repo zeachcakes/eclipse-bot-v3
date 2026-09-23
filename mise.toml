@@ -1,4 +1,5 @@
-# Adding a language runtime here is the stack decision and needs its own ADR.
+# Language runtimes are recorded in docs/decisions/0001-language-runtimes.md.
+# Adding or removing a runtime needs a new ADR.
 
 min_version = "2026.9.12"
 
@@ -6,4 +7,29 @@ min_version = "2026.9.12"
 lockfile = true
 
 [tools]
+# Bot runtimes (ADR 0001)
+java = "temurin-25.0.4+101.0.LTS"
+node = "24.21.0"
+python = "3.14.7"
+
+# Dev tooling runtime only, not part of the bot stack (ADR 0001)
+ruby = "4.0.7"
+
+# CLI tools
+actionlint = "1.7.12"
+delta = "0.19.2"
+difftastic = "0.71.0"
+editorconfig-checker = "4.0.2"
+fzf = "0.74.4"
 gh = "2.101.0"
+hadolint = "2.15.1"
+jq = "1.8.2"
+pipx = "1.17.5"
+pre-commit = "4.6.2"
+ruff = "0.16.8"
+shellcheck = "0.11.0"
+shfmt = "3.14.1"
+trivy = "0.74.0"
+uv = "0.12.17"
+yamlfmt = "0.21.0"
+yq = "4.53.6"
