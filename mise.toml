@@ -1,23 +1,16 @@
-# Project runtimes, consumed inside the dev container only.
+# Used inside the dev container only; see
+# docs/decisions/0002-mise-toolchain-in-dev-container.md.
 #
-# mise is installed in the container image (see .devcontainer/devcontainer.json)
-# and deliberately NOT on the host. Keeping project toolchains off the Mac is the
-# reason the dev container exists — see docs/decisions/0001-local-dev-container.md.
-# Because the host has no mise, this file is read only inside the container and
-# no host/container config split is needed.
+# Adding a language runtime here is the stack decision and needs its own ADR.
 #
-# .devcontainer/scripts/post-create.sh runs `mise install` against this file when
-# the container is created, and installed tools persist in the mise-data volume,
-# so a rebuild does not re-download them.
-#
-# Intentionally empty: no language, framework, or datastore has been chosen.
-# Adding a runtime here *is* the stack decision, so it warrants its own ADR
-# rather than arriving as a drive-by edit.
-#
-# Note: the image's own `node` comes from the devcontainer Feature, because the
-# Claude Code Feature depends on it. Do not pin node here to manage that. Doing
-# so would put a second node on PATH via mise's shims, and which one wins depends
-# on how the shell was started — a login shell re-prepends the Feature's nvm path,
-# while a non-interactive one leaves the shims first. Two nodes with
-# order-dependent resolution is worse than either alone.
+# Do not pin node: the Claude Code Feature brings its own, and a second node on
+# PATH resolves in an order that depends on how the shell was started.
+
+# Keep in sync with the ghcr.io/jdx/mise tag in .devcontainer/Dockerfile.
+min_version = "2026.9.12"
+
+[settings]
+lockfile = true
+
 [tools]
+gh = "2.101.0"
