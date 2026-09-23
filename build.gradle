@@ -1,0 +1,4 @@
+// `base` gives the root project the clean, assemble, check and build lifecycle tasks.
+plugins {
+    id 'base'
+}

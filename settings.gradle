@@ -1,0 +1,2 @@
+// Subprojects are added here with `include` as the bot's modules land.
+rootProject.name = 'eclipse-bot-v3'
