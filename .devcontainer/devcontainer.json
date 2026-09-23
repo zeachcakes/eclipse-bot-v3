@@ -1,10 +1,11 @@
 // For format details, see https://containers.dev/implementors/json_reference/
 // Rationale for this configuration: docs/decisions/0001-local-dev-container.md
+// and docs/decisions/0002-mise-toolchain-in-dev-container.md
 {
 	"name": "eclipse-bot-v3",
 
-	// The image lives in docker-compose.yaml so that adding a database later is
-	// a new service rather than a migration off the `image` property.
+	// The service lives in docker-compose.yaml so that adding a database later is
+	// a new service rather than a migration off the `build` property.
 	"dockerComposeFile": "docker-compose.yaml",
 	"service": "app",
 
@@ -14,7 +15,6 @@
 	"workspaceFolder": "/workspaces/eclipse-bot-v3",
 
 	"features": {
-		"ghcr.io/devcontainers/features/github-cli:1": {},
 		// Node is a dependency of the Claude Code feature, not a stack choice.
 		// Pinned to lts because the feature otherwise auto-installs Node 18,
 		// which is past end-of-life.
@@ -28,34 +28,37 @@
 		"ghcr.io/jsburckhardt/devcontainer-features/mise:1": {}
 	},
 
-	// mise reads mise.toml from the bind-mounted workspace, which is untrusted by
-	// default — `mise install` would prompt, and fail outright with no TTY.
-	// Pre-trusting the path is the non-interactive form of `mise trust`.
 	"containerEnv": {
-		"MISE_TRUSTED_CONFIG_PATHS": "${containerWorkspaceFolder}"
+		// The bind-mounted mise.toml is untrusted by default, and `mise install`
+		// cannot answer the trust prompt without a TTY.
+		"MISE_TRUSTED_CONFIG_PATHS": "${containerWorkspaceFolder}",
+
+		// Git refuses a repo owned by another user. Docker Desktop's file sharing
+		// reports the workspace as uid 1000 at rest and as root while files in it
+		// change, so no container user matches it all the time. Git reads
+		// GIT_CONFIG_* as command-line config, which is allowed to set
+		// safe.directory, and every process in the container inherits it.
+		"GIT_CONFIG_COUNT": "1",
+		"GIT_CONFIG_KEY_0": "safe.directory",
+		"GIT_CONFIG_VALUE_0": "${containerWorkspaceFolder}"
 	},
 
-	// Put mise's shims on PATH. The docs prefer shims over `mise activate` for
-	// containers and IDEs: activate only applies to interactive shells, which
-	// would leave installed tools invisible to editor tooling and scripts.
-	"remoteEnv": {
-		"PATH": "/home/vscode/.local/share/mise/shims:${containerEnv:PATH}"
-	},
-
-	// The named volumes mount root-owned, so they need a chown no image layer can
-	// provide, and `mise install` needs the bind-mounted mise.toml, which does not
-	// exist at build time. Prebuild-oriented hooks (onCreateCommand,
-	// updateContentCommand) are deliberately unused — see the ADR. Invoked via
-	// `bash` so it still runs if a checkout drops the executable bit.
-	"postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+	// Runs on every start, including after a rebuild. A no-op when installed
+	// tools already match mise.toml.
+	"postStartCommand": "mise install",
 
 	"customizations": {
 		"vscode": {
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "zsh"
+			},
 			"extensions": [
-				"anthropic.claude-code"
+				"anthropic.claude-code",
+				"hverlin.mise-vscode"
 			]
 		}
 	},
 
-	"remoteUser": "vscode"
+	"containerUser": "root",
+	"remoteUser": "root"
 }

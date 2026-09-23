@@ -1,6 +1,8 @@
 services:
   app:
-    image: mcr.microsoft.com/devcontainers/base:debian-12
+    build:
+      context: .
+      dockerfile: Dockerfile
 
     volumes:
       # Mount only this repo. Do not widen this to `../..:/workspaces` (as the
@@ -8,14 +10,14 @@ services:
       # every sibling checkout into the container.
       - ..:/workspaces/eclipse-bot-v3:cached
       # Persist Claude Code credentials and config across container rebuilds.
-      - claude-config:/home/vscode/.claude
-      # Persist mise-installed runtimes across rebuilds. Without this, every
-      # rebuild re-downloads every tool pinned in mise.toml.
-      - mise-data:/home/vscode/.local/share/mise
+      - claude-config:/root/.claude
+      # Persist mise-installed tools across rebuilds.
+      - mise-data:/mnt/mise-data
 
     # Keep the container alive; without this the service exits immediately.
     command: sleep infinity
 
 volumes:
   claude-config:
+  mise-data:
   mise-data:
