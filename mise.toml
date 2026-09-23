@@ -1,12 +1,5 @@
-# Used inside the dev container only; see
-# docs/decisions/0002-mise-toolchain-in-dev-container.md.
-#
 # Adding a language runtime here is the stack decision and needs its own ADR.
-#
-# Do not pin node: the Claude Code Feature brings its own, and a second node on
-# PATH resolves in an order that depends on how the shell was started.
 
-# Keep in sync with the ghcr.io/jdx/mise tag in .devcontainer/Dockerfile.
 min_version = "2026.9.12"
 
 [settings]

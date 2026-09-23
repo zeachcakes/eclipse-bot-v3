@@ -1,6 +1,5 @@
 
 .vscode/mise-tools
-.devcontainer/.env.run
 
 .gradle
 **/build/
