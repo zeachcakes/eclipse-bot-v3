@@ -12,6 +12,8 @@ decision-makers: Kanishk Gupta
 
 ## Decision Outcome
 
+> [ADR 0005](0005-convention-plugins-included-build.md) supersedes the `buildSrc/` convention plugins below and the "plus an `include`" consequence. The version catalog decision still stands.
+
 Generate the build layout with `./gradlew init --type java-application --split-project --dsl groovy --test-framework junit-jupiter --java-version 25`, from Gradle 9.7.1. Keep its version catalog, convention plugins and `gradle.properties`, and delete the sample `app`, `list` and `utilities` subprojects.
 
 * `gradle/libs.versions.toml` is the version catalog. Every dependency and plugin version for the Gradle build lives there. Build scripts reference entries as `libs.<alias>` and never write a version inline.

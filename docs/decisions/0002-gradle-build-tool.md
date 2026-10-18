@@ -16,7 +16,7 @@ Use Gradle through the Gradle Wrapper committed to the repository:
 
 * Gradle 9.7.1, `bin` distribution. `gradle/wrapper/gradle-wrapper.properties` pins the distribution's SHA-256, so the wrapper refuses a tampered download.
 * Groovy DSL: `settings.gradle` and `build.gradle`.
-* A multi-project build. The root project applies only the `base` plugin, and each part of the bot becomes a subproject listed in `settings.gradle`.
+* A multi-project build. The root project applies only the `base` plugin, and each part of the bot becomes a subproject listed in `settings.gradle`. [ADR 0005](0005-convention-plugins-included-build.md) replaces the list with automatic discovery.
 * Gradle is not pinned in `mise.toml`. The wrapper is the only source of the Gradle version, and it runs on the JDK that mise pins. Upgrade with `./gradlew wrapper --gradle-version <version> --gradle-distribution-sha256-sum <sha256>`.
 
 ### Consequences
