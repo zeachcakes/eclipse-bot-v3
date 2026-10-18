@@ -2,8 +2,9 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html#sec::toml-dependencies-format
 #
 # Every dependency and plugin version for the Gradle build lives here (ADR 0004).
-# Build scripts reference entries as `libs.<alias>`. Convention plugins in buildSrc
-# look them up with `versionCatalogs.named('libs')`, because they cannot use the accessors.
+# Build scripts reference entries as `libs.<alias>`. Convention plugins in
+# tools/gradle/convention-plugins look them up with `versionCatalogs.named('libs')`,
+# because they cannot use the accessors.
 
 [versions]
 errorprone = "2.50.0"

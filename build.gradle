@@ -1,4 +1,5 @@
-// `base` gives the root project the clean, assemble, check and build lifecycle tasks.
-plugins {
-    id 'base'
+allprojects {
+
+    group = "com.zeachcakes.eclipse"
+    version = "0.1.0"
 }
