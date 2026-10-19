@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: catalog
+  main:
+    web-application-type: reactive
+  r2dbc:
+    url: ${CATALOG_R2DBC_URL}
+    username: ${CATALOG_APP_DB_USER}
+    password: ${CATALOG_APP_DB_PASSWORD}
+    properties:
+      schema: catalog
+  jooq:
+    sql-dialect: postgres
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: never
+app:
+  jdbc:
+    jdbc-url: ${CATALOG_DB_URL}
+    username: ${CATALOG_APP_DB_USER}
+    password: ${CATALOG_APP_DB_PASSWORD}
+    schema: catalog

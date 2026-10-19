@@ -12,6 +12,8 @@
 
 ### Local environment ###
 .env
+.env.*
+!.env.example
 DEVELOPMENT.md
 
 ### CLAUDE ###

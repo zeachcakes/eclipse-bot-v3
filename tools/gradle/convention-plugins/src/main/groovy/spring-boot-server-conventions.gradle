@@ -1,0 +1,19 @@
+plugins {
+    id 'java-core-conventions'
+    id 'org.springframework.boot'
+}
+
+def catalog = extensions.getByType(VersionCatalogsExtension).named('libs')
+
+dependencies {
+    implementation platform(catalog.findLibrary('spring-boot-bom').get())
+    implementation catalog.findLibrary('spring-webflux').get()
+    implementation catalog.findLibrary('spring-r2dbc').get()
+    implementation catalog.findLibrary('spring-jooq').get()
+    implementation catalog.findLibrary('hikari').get()
+    runtimeOnly catalog.findLibrary('postgresql').get()
+    runtimeOnly catalog.findLibrary('r2dbc-postgresql').get()
+
+    testImplementation catalog.findLibrary('spring-test').get()
+    testImplementation catalog.findLibrary('reactor-test').get()
+}

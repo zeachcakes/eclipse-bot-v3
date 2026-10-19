@@ -1,0 +1,9 @@
+plugins {
+    id 'service-schema-conventions'
+}
+
+schemaDatabase {
+    schemaName = 'catalog'
+    generatedPackage = 'com.clashofclans.eclipse.catalog.jooq'
+    connectionKey = 'catalog'
+}

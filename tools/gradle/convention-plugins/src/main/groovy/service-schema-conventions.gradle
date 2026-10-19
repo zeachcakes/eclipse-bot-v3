@@ -1,0 +1,162 @@
+import buildlogic.DatabaseSchemaExtension
+import buildlogic.SchemaFiles
+import buildlogic.SchemaTaskSupport
+import buildlogic.VerifyGeneratedJooq
+import nu.studer.gradle.jooq.JooqEdition
+import org.flywaydb.gradle.task.AbstractFlywayTask
+import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.jooq.meta.jaxb.Logging
+
+plugins {
+    id 'java-core-conventions'
+    id 'nu.studer.jooq'
+    id 'org.flywaydb.flyway'
+}
+
+def catalog = extensions.getByType(VersionCatalogsExtension).named('libs')
+def schema = extensions.create('schemaDatabase', DatabaseSchemaExtension)
+def migrationDirectory = layout.projectDirectory.dir('src/main/resources/db/migration')
+def generatedDirectory = layout.buildDirectory.dir('generated-src/jooq/main')
+def stateFile = layout.buildDirectory.file('jooq/generation-state.json')
+def flywayExtension = extensions.getByName('flyway')
+def jooqVersion = catalog.findVersion('jooq').get().requiredVersion
+def flywayVersion = catalog.findVersion('flyway').get().requiredVersion
+
+configurations.create('flywayMigration') {
+    canBeResolved = true
+    canBeConsumed = false
+}
+dependencies {
+    api catalog.findLibrary('jooq-runtime').get()
+    jooqGenerator catalog.findLibrary('postgresql').get()
+    flywayMigration catalog.findLibrary('postgresql').get()
+}
+
+jooq {
+    version = jooqVersion
+    edition = JooqEdition.OSS
+    configurations {
+        main {
+            generateSchemaSourceOnCompilation = false
+            generationTool {
+                logging = Logging.WARN
+                jdbc { driver = 'org.postgresql.Driver' }
+                generator {
+                    name = 'org.jooq.codegen.DefaultGenerator'
+                    database {
+                        name = 'org.jooq.meta.postgres.PostgresDatabase'
+                        includes = '.*'
+                        excludes = 'flyway_schema_history'
+                    }
+                    generate {
+                        records = true
+                        pojos = true
+                        immutablePojos = true
+                        fluentSetters = true
+                        indexes = false
+                        deprecated = false
+                    }
+                    target { directory = generatedDirectory.get().asFile.absolutePath }
+                }
+            }
+        }
+    }
+}
+
+def mainJooq = jooq.configurations.named('main').get().jooqConfiguration
+def generationConfiguration = providers.provider {
+    SchemaTaskSupport.generationConfiguration(mainJooq, jooq.version.get(), flywayVersion)
+}
+def validateDatabase = tasks.register('validateSchemaDatabase') {
+    group = 'database'
+    description = 'Validate this service’s explicit migration connection settings without connecting.'
+    notCompatibleWithConfigurationCache('Database credentials are resolved only during execution')
+    doLast {
+        // Invalidate before even validation fails when preparation/migration was requested.
+        if (gradle.taskGraph.hasTask(tasks.named('flywayMigrate').get())) {
+            SchemaFiles.invalidate(stateFile.get().asFile)
+        }
+        SchemaTaskSupport.rejectFlywayOverrides(project, flywayExtension)
+        SchemaTaskSupport.connection(project, schema)
+    }
+}
+
+tasks.withType(AbstractFlywayTask).configureEach { task ->
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf('The external database is mutable') { true }
+    notCompatibleWithConfigurationCache('Database credentials must not enter the configuration cache')
+    if (task.name in ['flywayClean', 'flywayRepair', 'flywayBaseline', 'flywayUndo']) {
+        doFirst {
+            throw new GradleException("${task.path} is disabled. Administrative database operations require a separate owner-approved procedure.")
+        }
+    } else {
+        dependsOn validateDatabase
+        doFirst {
+            if (task.name == 'flywayMigrate') {
+                SchemaFiles.invalidate(stateFile.get().asFile)
+            }
+            SchemaTaskSupport.rejectFlywayOverrides(project, flywayExtension, task)
+            def settings = SchemaTaskSupport.connection(project, schema)
+            SchemaTaskSupport.configureFlyway(task, schema.schemaName.get(), migrationDirectory.asFile)
+            task.url = settings.url
+            task.user = settings.user
+            task.password = settings.password
+        }
+    }
+}
+
+def generation = tasks.named('generateJooq') {
+    dependsOn tasks.named('flywayMigrate')
+    allInputsDeclared = false
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf('Introspection depends on a mutable external database') { true }
+    notCompatibleWithConfigurationCache('Generator configuration contains execution-only credentials')
+    doFirst {
+        SchemaFiles.invalidate(stateFile.get().asFile)
+        def settings = SchemaTaskSupport.connection(project, schema)
+        mainJooq.jdbc.url = settings.url
+        mainJooq.jdbc.user = settings.user
+        mainJooq.jdbc.password = settings.password
+        // Restrict cleanup to this one module's configured output tree.
+        delete(generatedDirectory.get().asFile)
+    }
+    doLast {
+        SchemaFiles.record(stateFile.get().asFile, generationConfiguration.get(),
+            migrationDirectory.asFile, generatedDirectory.get().asFile)
+    }
+}
+
+tasks.register('prepareSchema') {
+    group = 'database'
+    description = 'Explicitly migrate and regenerate the schema’s jOOQ sources.'
+    dependsOn generation
+}
+
+def verification = tasks.register('verifyGeneratedJooq', VerifyGeneratedJooq) {
+    group = 'verification'
+    description = 'Check that existing jOOQ sources match this module’s migrations and generation settings.'
+    it.generatedDirectory.set(generatedDirectory)
+    it.migrationDirectory.set(migrationDirectory)
+    it.stateFile.set(stateFile)
+    it.generationConfiguration.set(generationConfiguration)
+    schemaProjectPath.set(project.path)
+    preparationTaskPath.set(project.path == ':' ? ':prepareSchema' : "${project.path}:prepareSchema")
+    mustRunAfter generation
+}
+tasks.named('compileJava') { dependsOn verification }
+tasks.named('check') { dependsOn verification }
+tasks.withType(JavaCompile).configureEach {
+    options.errorprone.excludedPaths.set(SchemaTaskSupport.generatedSourcePattern(generatedDirectory.get().asFile.absolutePath))
+}
+
+afterEvaluate {
+    def basePackage = providers.gradleProperty('baseJavaPackage').get()
+    DatabaseSchemaExtension.validateNamespace(project.path, schema.schemaName.orNull, schema.connectionKey.orNull,
+        schema.generatedPackage.orNull, basePackage)
+    schema.schemaName.finalizeValue()
+    schema.connectionKey.finalizeValue()
+    schema.generatedPackage.finalizeValue()
+    SchemaTaskSupport.configureFlyway(flywayExtension, schema.schemaName.get(), migrationDirectory.asFile)
+    mainJooq.generator.database.inputSchema = schema.schemaName.get()
+    mainJooq.generator.target.packageName = schema.generatedPackage.get()
+}

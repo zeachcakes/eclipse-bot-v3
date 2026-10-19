@@ -1,0 +1,12 @@
+plugins {
+    id 'spring-boot-server-conventions'
+}
+
+dependencies {
+    implementation project(':libraries:common')
+    implementation project(':services:catalog:schema')
+}
+
+springBoot {
+    mainClass = 'com.clashofclans.eclipse.catalog.server.CatalogApplication'
+}

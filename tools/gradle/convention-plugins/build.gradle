@@ -1,0 +1,21 @@
+plugins {
+    id 'groovy-gradle-plugin'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(27)
+    }
+}
+
+dependencies {
+    implementation libs.errorprone.plugin
+    implementation libs.spring.boot.plugin
+    implementation libs.flyway.plugin
+    // Flyway finds database support only on the class loader that loaded flyway-core.
+    implementation libs.flyway.postgresql
+    implementation(libs.jooq.plugin) {
+        exclude group: 'org.jooq'
+    }
+    implementation libs.jooq.codegen
+}

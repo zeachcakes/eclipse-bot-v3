@@ -1,5 +1,7 @@
-allprojects {
+def foundationGroup = providers.gradleProperty('projectGroup').get()
+def foundationVersion = providers.gradleProperty('projectVersion').get()
 
-    group = "com.zeachcakes.eclipse"
-    version = "0.1.0"
+allprojects {
+    group = foundationGroup
+    version = foundationVersion
 }
