@@ -5,6 +5,9 @@
 **/build/
 !src/**/build/
 
+# IDE build output (the VS Code and Eclipse Java tooling writes bin/ in each project)
+**/bin/
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 

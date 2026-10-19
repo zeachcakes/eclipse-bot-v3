@@ -13,7 +13,7 @@ if (!SourceVersion.isName(basePackage)) {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(27)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 

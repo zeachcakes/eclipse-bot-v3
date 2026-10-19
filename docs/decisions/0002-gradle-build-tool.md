@@ -14,14 +14,14 @@ decision-makers: Kanishk Gupta
 
 Use Gradle through the Gradle Wrapper committed to the repository:
 
-* Gradle 9.7.1, `bin` distribution. `gradle/wrapper/gradle-wrapper.properties` pins the distribution's SHA-256, so the wrapper refuses a tampered download.
+* Gradle 9.8.0, `bin` distribution. `gradle/wrapper/gradle-wrapper.properties` pins the distribution's SHA-256, so the wrapper refuses a tampered download.
 * Groovy DSL: `settings.gradle` and `build.gradle`.
-* A multi-project build. The root project applies only the `base` plugin, and each part of the bot becomes a subproject listed in `settings.gradle`. [ADR 0005](0005-convention-plugins-included-build.md) replaces the list with automatic discovery.
+* A multi-project build. The root project applies no plugins; it only sets the group and version. Each part of the bot becomes a subproject, which [ADR 0005](0005-convention-plugins-included-build.md) discovers automatically.
 * Gradle is not pinned in `mise.toml`. The wrapper is the only source of the Gradle version, and it runs on the JDK that mise pins. Upgrade with `./gradlew wrapper --gradle-version <version> --gradle-distribution-sha256-sum <sha256>`.
 
 ### Consequences
 
 * Good, because contributors and CI need no global Gradle install. `./gradlew` downloads and verifies the pinned version.
-* Good, because the root `build` task already exists, so CI can call `./gradlew build` before any subproject lands.
+* Good, because `./gradlew build` at the root builds and tests every subproject.
 * Bad, because the Groovy DSL gives weaker IDE completion and type checks than the Kotlin DSL.
 * Open: this ADR does not decide whether Gradle also drives the Python and Node.js builds. It also does not choose frameworks or a datastore.

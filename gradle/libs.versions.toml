@@ -1,5 +1,5 @@
 # Shared by the application and the independent tools/gradle included build.
-# See CONVENTION-PLUGINS-REUSE.md for the reproducible compatibility baseline.
+# Alignment rules for these versions: docs/decisions/0006-layered-convention-plugins.md.
 [versions]
 spring-boot = "4.0.3"
 errorprone-plugin = "4.3.0"
