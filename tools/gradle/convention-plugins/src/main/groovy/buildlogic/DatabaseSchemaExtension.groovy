@@ -35,6 +35,6 @@ abstract class DatabaseSchemaExtension {
     }
 
     private static boolean isJavaPackage(String value) {
-        value != null && !value.isEmpty() && SourceVersion.isName(value, SourceVersion.RELEASE_27)
+        value != null && !value.isEmpty() && SourceVersion.isName(value, SourceVersion.RELEASE_25)
     }
 }

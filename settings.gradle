@@ -15,6 +15,35 @@ dependencyResolutionManagement {
 
 rootProject.name = 'eclipse-bot-v3'
 
-include(':libraries:common')
-include(':services:catalog:schema')
-include(':services:catalog:server')
+/*
+ * Every directory below the root that holds a build.gradle is a subproject, named after its
+ * path: services/api/build.gradle becomes :services:api.
+ *
+ * The walk skips hidden directories and ones that never hold a subproject. It also skips any
+ * directory with its own settings.gradle: that is a separate build, such as tools/gradle,
+ * not a subproject.
+ *
+ * The configuration cache tracks every directory listed here, so a new file in a walked
+ * directory forces a reconfigure. Skipping src keeps source edits from doing that.
+ *
+ * The walk calls listFiles() itself: Groovy's File.traverse lists directories inside the
+ * Groovy runtime, where the configuration cache does not see it, and new subprojects are missed.
+ */
+def skippedDirs = ['build', 'docs', 'gradle', 'node_modules', 'src'] as Set
+
+def discoverSubprojects
+discoverSubprojects = { File dir ->
+    dir.listFiles().each { child ->
+        if (!child.isDirectory() || child.name.startsWith('.') || child.name in skippedDirs) {
+            return
+        }
+        if (new File(child, 'settings.gradle').isFile()) {
+            return
+        }
+        if (new File(child, 'build.gradle').isFile()) {
+            include(rootDir.toPath().relativize(child.toPath()).join(':'))
+        }
+        discoverSubprojects(child)
+    }
+}
+discoverSubprojects(rootDir)

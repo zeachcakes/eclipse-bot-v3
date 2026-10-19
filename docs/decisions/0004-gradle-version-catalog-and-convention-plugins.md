@@ -22,7 +22,6 @@ Generate the build layout with `./gradlew init --type java-application --split-p
   * `buildlogic.java-application-conventions` adds the `application` plugin. Services apply it.
   * `buildlogic.java-library-conventions` adds the `java-library` plugin. Shared libraries apply it.
 * Precompiled script plugins cannot use the generated `libs` accessors. They look entries up with `versionCatalogs.named('libs').findLibrary('<alias>')`, which reads the catalog of the project that applies the plugin. `buildSrc/settings.gradle` also imports the catalog, so `buildSrc/build.gradle` can use `libs.<alias>` for plugin dependencies.
-* `settings.gradle` applies the `org.gradle.toolchains.foojay-resolver-convention` plugin. Its version stays inline, because the version catalog is not available in the settings `plugins {}` block. The Temurin 25 JDK from mise satisfies the toolchain, so the resolver normally downloads nothing.
 * `gradle.properties` turns on the configuration cache.
 * `gradle init` also rewrites `.gitignore`, `.gitattributes` and the wrapper files, and drops the wrapper's `distributionSha256Sum`. Those changes were reverted. Do the same if `init` is ever run again.
 

@@ -1,5 +1,4 @@
-# Language runtimes are recorded in docs/decisions/0001-language-runtimes.md;
-# the Java 27 foundation baseline is recorded in ADR 0006.
+# Language runtimes are recorded in docs/decisions/0001-language-runtimes.md.
 # Adding or removing a runtime needs a new ADR.
 
 min_version = "2026.9.12"
@@ -8,8 +7,8 @@ min_version = "2026.9.12"
 lockfile = true
 
 [tools]
-# Bot runtimes (ADR 0001, Java baseline ADR 0006)
-java = "temurin-27.0.0+35"
+# Bot runtimes (ADR 0001)
+java = "temurin-25.0.4+101.0.LTS"
 node = "24.21.0"
 python = "3.14.7"
 
