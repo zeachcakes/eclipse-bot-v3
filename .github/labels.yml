@@ -1,24 +1,12 @@
-# Repository labels, applied by the sync job in .github/workflows/labels.yml (ADR 0008).
-# Labels missing here, such as GitHub's defaults, are kept. Delete labels by hand, or rename them with from_name.
-# Pull request type, from the Conventional Commit type in the title, or from the branch prefix.
-- {name: "type: feat", color: "#1d76db", description: "A new feature"}
-- {name: "type: fix", color: "#1d76db", description: "A bug fix"}
-- {name: "type: docs", color: "#1d76db", description: "Documentation only"}
-- {name: "type: style", color: "#1d76db", description: "Formatting that does not change behavior"}
-- {name: "type: refactor", color: "#1d76db", description: "A code change that neither fixes a bug nor adds a feature"}
-- {name: "type: perf", color: "#1d76db", description: "A performance improvement"}
-- {name: "type: test", color: "#1d76db", description: "Adds or corrects tests"}
-- {name: "type: build", color: "#1d76db", description: "Build system or external dependencies"}
-- {name: "type: ci", color: "#1d76db", description: "CI configuration and workflows"}
-- {name: "type: chore", color: "#1d76db", description: "Maintenance that changes no source or tests"}
-- {name: "type: revert", color: "#1d76db", description: "Reverts an earlier change"}
-- {name: "breaking", color: "#b60205", description: "Breaking change, marked with ! in the PR title"}
-# Areas, from the paths a pull request changes (.github/labeler.yml).
-- {name: "area: build", color: "#c2e0c6", description: "Gradle build, wrapper and convention plugins"}
-- {name: "area: database", color: "#c2e0c6", description: "Schemas, migrations and local PostgreSQL"}
-- {name: "area: catalog", color: "#c2e0c6", description: "The catalog service"}
-- {name: "area: libraries", color: "#c2e0c6", description: "Shared libraries"}
-- {name: "area: docs", color: "#c2e0c6", description: "Documentation, ADRs and Markdown files"}
-- {name: "area: tooling", color: "#c2e0c6", description: "mise, pre-commit and editor settings"}
-- {name: "area: ci", color: "#c2e0c6", description: "GitHub Actions workflows and repository automation"}
+# Pull request labels, applied by the sync job in .github/workflows/labels.yml (ADR 0008).
+# Each label names a part of the repository, and .github/labeler.yml maps changed paths to it.
+# Labels missing here, such as GitHub's other defaults, are kept. Delete labels by hand, or rename them with from_name.
+- {name: "build", color: "#c2e0c6", description: "Gradle build, wrapper and convention plugins"}
+- {name: "database", color: "#c2e0c6", description: "Schemas, migrations and local PostgreSQL"}
+- {name: "catalog", color: "#c2e0c6", description: "The catalog service"}
+- {name: "libraries", color: "#c2e0c6", description: "Shared libraries"}
+# GitHub's default label, kept as it is.
+- {name: "documentation", color: "#0075ca", description: "Improvements or additions to documentation"}
+- {name: "tooling", color: "#c2e0c6", description: "mise, pre-commit and editor settings"}
+- {name: "ci", color: "#c2e0c6", description: "GitHub Actions workflows and repository automation"}
 - {name: "dependencies", color: "#0366d6", description: "Changes dependency or tool versions"}
