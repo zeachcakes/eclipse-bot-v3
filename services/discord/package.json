@@ -1,0 +1,21 @@
+{
+  "name": "@eclipse/discord",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/main.ts",
+    "register:commands": "node src/register-commands.ts",
+    "check": "tsc --project tsconfig.test.json",
+    "build": "tsc --project tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3"
+  }
+}

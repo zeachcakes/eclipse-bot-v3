@@ -8,6 +8,10 @@
 # IDE build output (the VS Code and Eclipse Java tooling writes bin/ in each project)
 **/bin/
 
+# Node.js dependencies and compiled service output
+node_modules/
+dist/
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 

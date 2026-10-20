@@ -9,6 +9,9 @@ database:
 catalog:
   - changed-files:
       - any-glob-to-any-file: ["services/catalog/**"]
+discord:
+  - changed-files:
+      - any-glob-to-any-file: ["services/discord/**"]
 libraries:
   - changed-files:
       - any-glob-to-any-file: ["libraries/**"]
@@ -23,4 +26,4 @@ ci:
       - any-glob-to-any-file: [".github/**"]
 dependencies:
   - changed-files:
-      - any-glob-to-any-file: ["gradle/libs.versions.toml", "gradle/wrapper/**", "mise.lock"]
+      - any-glob-to-any-file: ["gradle/libs.versions.toml", "gradle/wrapper/**", "mise.lock", "**/package.json", "**/package-lock.json"]
