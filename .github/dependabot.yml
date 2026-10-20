@@ -55,3 +55,16 @@ updates:
       prefix: chore
       include: scope
     labels: [dependencies]
+  - package-ecosystem: npm
+    directory: /services/discord
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [dependencies]

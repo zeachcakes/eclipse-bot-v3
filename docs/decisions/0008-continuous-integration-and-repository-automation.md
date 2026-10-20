@@ -6,6 +6,11 @@ decision-makers: Kanishk Gupta
 
 # Continuous integration and repository automation
 
+Updated by [ADR 0010](0010-centralized-development-workflow.md): CI invokes the
+shared root mise tasks after installing each job's required tools, and disables
+local dotenv loading with `MISE_NO_ENV=1`. The security and automation rules in
+this record remain in effect.
+
 ## Context and Problem Statement
 
 Nothing checks a pull request before it is merged. The pre-commit hooks run only on machines that installed them, and nothing runs the build and the tests. The build also needs generated jOOQ sources, which need a migrated database ([ADR 0007](0007-per-service-database-schemas.md)). Pull requests get no labels, so the pull request list does not show which parts of the repository each one touches. Pinned versions only change when someone bumps them by hand.
@@ -48,7 +53,9 @@ Chosen option: "GitHub Actions workflows with Dependabot, CodeQL default setup a
 
 * The `lint` job installs the hook tools from `mise.lock` with `jdx/mise-action`, then runs `pre-commit run --all-files`. It installs only the tools that the hooks need. Ruby compiles from source, and no hook uses it.
 * The `build` job installs Java from `mise.lock`, so Gradle runs on the pinned JDK instead of the runner's default one. `gradle/actions/setup-gradle` caches Gradle and validates the wrapper checksum.
-* The `build` job starts PostgreSQL from `compose.yaml` with random, masked passwords that exist only for the job. It creates the `catalog` schema and its migration role, runs `prepareSchema`, then runs `./gradlew build` and the convention plugin check. No credential is in a tracked file or on a command line.
+* The `build` job starts PostgreSQL from `compose.yaml` with random, masked passwords that exist only for the job. It creates the `catalog` schema and its migration role, then invokes `catalog:prepare`, `java:build` and `java:conventions:check` through mise with `--skip-tools`. No credential is in a tracked file or on a command line.
+* The `discord` job installs Node.js and runs `mise run --skip-tools discord:ci`, which installs locked npm dependencies, checks types, runs tests and builds. It needs no Discord credentials and never registers commands or connects to Discord.
+* As specified in ADR 0010, CI sets `MISE_NO_ENV=1` so local dotenv values cannot override job settings. The job actions install the tools they need before shared tasks run with `--skip-tools`.
 
 ### Pull request title
 
@@ -94,7 +101,7 @@ Chosen option: "GitHub Actions workflows with Dependabot, CodeQL default setup a
 ## More Information
 
 * Files: [CI workflow](../../.github/workflows/ci.yml), [pull request title workflow](../../.github/workflows/pr-title.yml), [labels workflow](../../.github/workflows/labels.yml), [labels](../../.github/labels.yml), [path rules](../../.github/labeler.yml), [Dependabot configuration](../../.github/dependabot.yml) and [pre-commit configuration](../../.pre-commit-config.yaml).
-* To repeat the `build` job locally against a throwaway database, use a separate `GRADLE_USER_HOME`. Settings in `~/.gradle/gradle.properties` win over environment variables (ADR 0007), so they would point the job at the development database.
+* To repeat CI against a throwaway database, explicitly supply its settings and set `MISE_NO_ENV=1`. ADR 0010 supersedes the original property-precedence rule: environment settings now win, and a blank supplied variable fails rather than falling back to `~/.gradle/gradle.properties`.
 * Actions: [jdx/mise-action](https://github.com/jdx/mise-action/blob/v5.2.1/README.md), [gradle/actions setup-gradle](https://github.com/gradle/actions/blob/v6.4.0/docs/setup-gradle.md), [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request/blob/v6.1.1/README.md), [actions/labeler](https://github.com/actions/labeler/blob/v7.0.0/README.md) and [crazy-max/ghaction-github-labeler](https://github.com/crazy-max/ghaction-github-labeler/blob/v6.0.0/README.md).
 * GitHub documentation: [`pull_request_target`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target), [secure use of GitHub Actions](https://docs.github.com/en/actions/reference/security/secure-use), [Dependabot options](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference) and [code scanning setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning).
 * [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and the [zizmor documentation](https://docs.zizmor.sh/).

@@ -6,6 +6,11 @@ decision-makers: Kanishk Gupta
 
 # Per-service database schemas with explicit preparation
 
+Updated by [ADR 0010](0010-centralized-development-workflow.md): local settings
+now come from the single root `.env` through mise, environment variables take
+precedence over legacy Gradle properties, and root tasks wrap the commands below.
+Schema ownership and explicit database preparation remain unchanged.
+
 ## Context and Problem Statement
 
 Services keep their data in PostgreSQL ([ADR 0003](0003-postgresql-datastore.md)). Each service changes its tables with Flyway migrations and queries them through jOOQ classes generated from the migrated schema. The services are reactive (Spring WebFlux), but jOOQ runs on blocking JDBC.
@@ -56,11 +61,11 @@ The connection key selects the settings. For `catalog`:
 | Migration role | `catalog.db.user` | `CATALOG_DB_USER` |
 | Migration password | `catalog.db.password` | `CATALOG_DB_PASSWORD` |
 
-* A Gradle property wins over its environment variable. An empty property is an error, not a fallback. There are no global `DB_*` settings and no default endpoint.
+* As updated by ADR 0010, a present environment variable wins over its Gradle property, even when blank. An invalid or blank supplied value is an error, not a fallback. The property is used only when the environment variable is absent. There are no global `DB_*` settings and no default endpoint.
 * Settings are read only when a database task runs, so listing or configuring the build needs no credentials.
 * The URL must be a PostgreSQL JDBC URL without credentials in it. The password is used exactly as given.
 * Errors name the missing settings, never their values, and nothing prints a resolved setting.
-* Keep secrets in environment variables or in `~/.gradle/gradle.properties` with mode 600, never in tracked files or `-P` arguments. Gradle does not read `.env`.
+* Keep local settings in the untracked root `.env`, loaded into the process environment by mise (ADR 0010). Legacy `~/.gradle/gradle.properties` settings are a fallback only when environment variables are absent. Never put secrets in tracked files or `-P` arguments. Gradle does not read dotenv files itself.
 * Gradle and jOOQ can write connection details into files under `build/`, so build directories stay ignored and are never shared.
 
 ### Tasks
@@ -130,6 +135,10 @@ compileJava, check -> verifyGeneratedJooq
 ## More Information
 
 ### Commands
+
+These are the underlying Gradle commands. Prefer the root `catalog:prepare`,
+`java:build` and `catalog:dev` mise tasks for the shared environment and toolchain
+described in ADR 0010. Build and startup tasks still never run preparation.
 
 ```sh
 # Check the settings, inspect the history, prepare, then validate.

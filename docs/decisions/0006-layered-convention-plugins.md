@@ -6,6 +6,10 @@ decision-makers: Kanishk Gupta
 
 # Layered convention plugins in the tools/gradle build
 
+Updated by [ADR 0010](0010-centralized-development-workflow.md): the convention
+build now includes Jupiter regression tests for database-settings resolution.
+The layered plugin architecture remains unchanged.
+
 ## Context and Problem Statement
 
 Every Java module in the bot needs the same compiler checks and test setup. Services also share their Spring Boot setup, and schema modules share their Flyway and jOOQ setup. [ADR 0005](0005-convention-plugins-included-build.md) puts convention plugins in an included build, but does not say how the plugins are built, split and versioned.
@@ -39,7 +43,7 @@ Chosen option: "Adapt its architecture", because it keeps a layout that already 
 * Scripts read the catalog with `extensions.getByType(VersionCatalogsExtension).named('libs')`, because the generated `libs` accessors do not exist inside precompiled plugins.
 * `convention-plugins` and the modules compile with the same Java toolchain, Java 25 (LTS), which is the JDK that mise pins ([ADR 0001](0001-language-runtimes.md)). Gradle itself must run on that JDK, because the plugin classes are compiled for it.
 * The conventions work with the configuration cache, except the database tasks described in [ADR 0007](0007-per-service-database-schemas.md).
-* `convention-plugins` has no test source sets. The modules that apply the conventions exercise them in `./gradlew check`.
+* As updated by ADR 0010, `convention-plugins` has Jupiter unit tests for database-settings resolution. The modules that apply the conventions still exercise their wiring in `./gradlew check`.
 
 ### Plugins
 
@@ -94,7 +98,7 @@ Guava, jOOL, jqwik, Log4j2, Netty version overrides, pgvector, Spring Security a
 * Good, because each plugin and library version is declared once.
 * Good, because a Java-only library builds and tests without Spring Boot or a database.
 * Good, because logic beyond wiring lives in small typed classes that can be unit-tested.
-* Bad, because `convention-plugins` has no automated tests, so a broken convention only shows up when a module that applies it builds.
+* Bad, because helper unit tests do not cover every applied convention; modules that apply the plugins still need to exercise their wiring.
 * Bad, because Gradle must run on the toolchain's JDK. A Gradle daemon on an older JDK, including one an IDE starts, cannot load the plugin classes.
 * Bad, because every module that applies any convention gets the whole plugin build on its build-script classpath, including the Spring Boot, Flyway and jOOQ plugins.
 * Bad, because the VS Code Gradle extension checks precompiled scripts against the wrong classpath and reports false "unable to resolve class" errors. `.vscode/settings.json` treats those scripts as plain Groovy to hide the errors, so they get no Gradle completion either.

@@ -4,6 +4,7 @@
 - {name: "build", color: "#c2e0c6", description: "Gradle build, wrapper and convention plugins"}
 - {name: "database", color: "#c2e0c6", description: "Schemas, migrations and local PostgreSQL"}
 - {name: "catalog", color: "#c2e0c6", description: "The catalog service"}
+- {name: "discord", color: "#c2e0c6", description: "The Discord interaction service"}
 - {name: "libraries", color: "#c2e0c6", description: "Shared libraries"}
 # GitHub's default label, kept as it is.
 - {name: "documentation", color: "#0075ca", description: "Improvements or additions to documentation"}

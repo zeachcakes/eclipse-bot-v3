@@ -1,6 +1,7 @@
 # Continuous integration (ADR 0008).
 # lint: runs every pre-commit hook on the whole repository.
 # build: migrates a throwaway PostgreSQL from compose.yaml, generates the jOOQ sources, then builds and tests.
+# discord: installs locked npm dependencies, checks types, tests, and builds without connecting to Discord.
 # Tools come from mise.lock, so CI uses the same versions as a local checkout.
 name: CI
 on:
@@ -8,6 +9,9 @@ on:
   push:
     branches: [main]
 permissions: {}
+# CI supplies its own settings; never load developer values from root .env.
+env:
+  MISE_NO_ENV: "1"
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -70,8 +74,25 @@ jobs:
           CREATE SCHEMA catalog AUTHORIZATION catalog_migration;
           SQL
       - name: Migrate and generate jOOQ sources
-        run: ./gradlew :services:catalog:schema:prepareSchema --no-configuration-cache
+        run: mise run --skip-tools catalog:prepare
       - name: Build and test
-        run: ./gradlew build
+        run: mise run --skip-tools java:build
       - name: Check the convention plugins
-        run: ./gradlew -p tools/gradle :convention-plugins:check
+        run: mise run --skip-tools java:conventions:check
+  discord:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        with:
+          install_args: node
+      # Node is already installed; avoid installing unrelated root tools for this job.
+      - name: Install, check, test and build
+        run: mise run --skip-tools discord:ci

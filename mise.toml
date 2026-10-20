@@ -5,6 +5,12 @@ min_version = "2026.9.12"
 
 [settings]
 lockfile = true
+task.run_auto_install = true
+
+# The only local environment file. Paths resolve from this config's directory.
+# Guard the loader explicitly: this mise version's tasks do not honor --no-env.
+[env]
+_.file = { path = "{% if env.MISE_NO_ENV | default(value='0') != '1' %}.env{% endif %}", redact = true }
 
 [tools]
 # Bot runtimes (ADR 0001)
@@ -34,3 +40,79 @@ uv = "0.12.17"
 yamlfmt = "0.21.0"
 yq = "4.53.6"
 zizmor = "1.31.1"
+
+# mise installs configured tools before running tasks. npm owns project libraries.
+[tasks.setup]
+description = "Install pinned tools and project dependencies"
+depends = ["discord:install"]
+
+[tasks."discord:install"]
+description = "Install locked Discord service dependencies"
+dir = "{{config_root}}/services/discord"
+run = "npm ci --ignore-scripts"
+
+[tasks."discord:check"]
+description = "Type-check the Discord service"
+dir = "{{config_root}}/services/discord"
+run = "npm run check"
+
+[tasks."discord:test"]
+description = "Run Discord service tests"
+dir = "{{config_root}}/services/discord"
+run = "npm test"
+
+[tasks."discord:build"]
+description = "Compile the Discord service"
+dir = "{{config_root}}/services/discord"
+run = "npm run build"
+
+[tasks."discord:dev"]
+description = "Run the Discord service in watch mode"
+dir = "{{config_root}}/services/discord"
+run = "npm run dev"
+
+[tasks."discord:start"]
+description = "Run the compiled Discord service"
+dir = "{{config_root}}/services/discord"
+run = "npm start"
+
+[tasks."discord:register"]
+description = "Replace this application's commands in the configured Discord guild"
+dir = "{{config_root}}/services/discord"
+run = "npm run register:commands"
+
+[tasks."discord:ci"]
+description = "Install, check, test and build the Discord service"
+dir = "{{config_root}}/services/discord"
+depends = ["discord:install"]
+run = ["npm run check", "npm test", "npm run build"]
+
+[tasks."java:build"]
+description = "Build and test Java modules using the prepared schemas"
+dir = "{{config_root}}"
+run = "./gradlew build"
+
+[tasks."java:conventions:check"]
+description = "Check the Gradle convention plugins"
+dir = "{{config_root}}"
+run = "./gradlew -p tools/gradle :convention-plugins:check"
+
+[tasks."catalog:prepare"]
+description = "Explicitly migrate the catalog schema and generate jOOQ sources"
+dir = "{{config_root}}"
+run = "./gradlew :services:catalog:schema:prepareSchema --no-configuration-cache"
+
+[tasks."catalog:dev"]
+description = "Run the catalog Java service using the prepared schema"
+dir = "{{config_root}}"
+run = "./gradlew :services:catalog:server:bootRun"
+
+[tasks."db:up"]
+description = "Start the local PostgreSQL database and wait for readiness"
+dir = "{{config_root}}"
+run = "docker compose up --detach --wait"
+
+[tasks."db:down"]
+description = "Stop the local PostgreSQL database, keeping its data"
+dir = "{{config_root}}"
+run = "docker compose down"

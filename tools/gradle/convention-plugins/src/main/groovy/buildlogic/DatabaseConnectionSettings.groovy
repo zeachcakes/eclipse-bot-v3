@@ -25,7 +25,7 @@ final class DatabaseConnectionSettings {
         ['url', 'user', 'password'].each { String name ->
             String propertyName = "${connectionKey}.db.${name}"
             String environmentName = "${prefix}_DB_${name.toUpperCase(Locale.ROOT)}"
-            Object supplied = properties.containsKey(propertyName) ? properties[propertyName] : environment[environmentName]
+            Object supplied = environment.containsKey(environmentName) ? environment[environmentName] : properties[propertyName]
             String value = supplied instanceof CharSequence ? supplied.toString() : null
             boolean invalid = value == null || (name == 'password' ? value.isEmpty() : value.trim().isEmpty())
             if (!invalid && name == 'url') {
