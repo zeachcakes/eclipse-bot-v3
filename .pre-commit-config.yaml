@@ -64,3 +64,9 @@ repos:
         entry: actionlint
         language: unsupported
         files: ^\.github/workflows/.*\.ya?ml$
+      - id: zizmor
+        name: zizmor
+        # Offline audits only, so the hook needs no GitHub token.
+        entry: zizmor --offline
+        language: unsupported
+        files: ^\.github/(workflows/.*\.ya?ml|dependabot\.ya?ml)$
