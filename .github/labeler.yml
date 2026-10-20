@@ -1,24 +1,24 @@
 # Path rules for actions/labeler, run by the label job in .github/workflows/labels.yml (ADR 0008).
-# Every label here must also be defined in .github/labels.yml. A new service gets its own area label.
-"area: build":
+# Every label here must also be defined in .github/labels.yml. A new service gets its own label.
+build:
   - changed-files:
       - any-glob-to-any-file: ["**/*.gradle", "gradle.properties", "gradle/**", "gradlew", "gradlew.bat", "tools/gradle/**"]
-"area: database":
+database:
   - changed-files:
       - any-glob-to-any-file: ["services/*/schema/**", "compose.yaml", ".env.example"]
-"area: catalog":
+catalog:
   - changed-files:
       - any-glob-to-any-file: ["services/catalog/**"]
-"area: libraries":
+libraries:
   - changed-files:
       - any-glob-to-any-file: ["libraries/**"]
-"area: docs":
+documentation:
   - changed-files:
       - any-glob-to-any-file: ["docs/**", "**/*.md"]
-"area: tooling":
+tooling:
   - changed-files:
       - any-glob-to-any-file: ["mise.toml", "mise.lock", ".pre-commit-config.yaml", ".editorconfig", ".gitattributes", ".gitignore", ".vscode/**"]
-"area: ci":
+ci:
   - changed-files:
       - any-glob-to-any-file: [".github/**"]
 dependencies:
