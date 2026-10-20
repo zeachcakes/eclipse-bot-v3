@@ -1,0 +1,57 @@
+# Weekly dependency updates, one grouped PR per ecosystem (ADR 0008).
+# Dependabot does not support mise, so the tools in mise.toml are still updated by hand.
+# A 7-day cooldown skips releases younger than a week, which are the likeliest to be broken or malicious.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [dependencies]
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      gradle:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [dependencies]
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker-compose:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [dependencies]
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      pre-commit:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [dependencies]
