@@ -22,6 +22,7 @@ built yet.
 | [libraries](libraries) | Shared code |
 | [tools/gradle](tools/gradle) | Gradle convention plugins |
 | [docs/decisions](docs/decisions) | Architecture decision records |
+| [.github](.github) | GitHub Actions workflows, pull request labeler rules and label definitions |
 
 ## Getting started
 

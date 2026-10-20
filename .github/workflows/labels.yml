@@ -1,0 +1,85 @@
+# Repository and pull request labels (ADR 0008).
+# sync: applies .github/labels.yml to the repository labels.
+# label: adds area labels from the changed paths (.github/labeler.yml), and one type label from the
+# Conventional Commit type in the PR title, or from the branch prefix when the title has none.
+# Each job runs only for its own events, so the sync job's checkout never runs on pull_request_target.
+# pull_request_target gives the label job a write token even on fork PRs, so that job must never check
+# out or run PR code, and must never put PR text such as the title into a script.
+name: Labels
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+  push:
+    branches: [main]
+    paths: [.github/labels.yml, .github/workflows/labels.yml]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  sync:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Sync labels
+        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
+        with:
+          # Deleting a label strips it from every issue and PR, so labels missing from the file are kept.
+          skip-delete: true
+  label:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: labels-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      # Nothing is checked out, so the labeler reads .github/labeler.yml from main through the API.
+      - name: Label by changed paths
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          sync-labels: true
+      - name: Label by Conventional Commit type
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const types = ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'build', 'ci', 'chore', 'revert'];
+            const branchAliases = new Map([['feature', 'feat'], ['bugfix', 'fix'], ['hotfix', 'fix']]);
+            const pr = context.payload.pull_request;
+            // "type(scope)!: description", where the scope and the "!" are optional.
+            const title = /^(\w+)(?:\([^)]*\))?(!)?:\s/.exec(pr.title);
+            const titleType = title?.[1].toLowerCase();
+            const branchPrefix = /^([\w-]+)\//.exec(pr.head.ref)?.[1].toLowerCase();
+            const branchType = branchAliases.get(branchPrefix) ?? branchPrefix;
+            // The title wins. The branch prefix is the fallback.
+            const type = [titleType, branchType].find((candidate) => types.includes(candidate));
+            const wanted = new Set();
+            if (type) {
+              wanted.add(`type: ${type}`);
+            } else {
+              core.notice('The PR title and branch name have no Conventional Commit type, so no type label was added.');
+            }
+            if (types.includes(titleType) && title[2]) {
+              wanted.add('breaking');
+            }
+            const issue = { ...context.repo, issue_number: pr.number };
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue(issue);
+            const current = labels.map((label) => label.name);
+            for (const name of current) {
+              if ((name.startsWith('type: ') || name === 'breaking') && !wanted.has(name)) {
+                await github.rest.issues.removeLabel({ ...issue, name });
+              }
+            }
+            const missing = [...wanted].filter((name) => !current.includes(name));
+            if (missing.length > 0) {
+              await github.rest.issues.addLabels({ ...issue, labels: missing });
+            }
