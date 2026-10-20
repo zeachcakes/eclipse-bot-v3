@@ -22,7 +22,7 @@ built yet.
 | [libraries](libraries) | Shared code |
 | [tools/gradle](tools/gradle) | Gradle convention plugins |
 | [docs/decisions](docs/decisions) | Architecture decision records |
-| [.github](.github) | GitHub Actions workflows, pull request labeler rules and label definitions |
+| [.github](.github) | GitHub Actions workflows (CI, PR title, labels), Dependabot and labeler configuration |
 
 ## Getting started
 
