@@ -27,7 +27,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install tools
-        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # Only what the hooks need. Ruby builds from source, and no hook uses it.
           install_args: python pre-commit actionlint editorconfig-checker hadolint ruff shellcheck shfmt yamlfmt zizmor
@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
       # Exports JAVA_HOME, so Gradle runs on the pinned JDK instead of the runner's default one.
       - name: Install Java
-        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: java
       - name: Set up Gradle
@@ -90,7 +90,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Node.js
-        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: node
       # Node is already installed; avoid installing unrelated root tools for this job.
