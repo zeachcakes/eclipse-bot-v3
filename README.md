@@ -22,6 +22,7 @@ will be added to the Java backend.
 | --- | --- |
 | [services/discord](services/discord) | Discord interaction service; [setup and commands](services/discord/README.md) |
 | [services/catalog](services/catalog) | Example Java service with `schema` (migrations and generated jOOQ model) and `server` modules |
+| [services/guild/schema](services/guild/schema) | Guild persistence: CoC and Discord star-schema SQL migrations, configuration, and SQL regression checks; [ER diagrams](docs/design/guild-er-diagram.md) |
 | [libraries](libraries) | Shared code |
 | [tools/gradle](tools/gradle) | Gradle convention plugins |
 | [docs/decisions](docs/decisions) | Architecture decision records |
@@ -50,7 +51,7 @@ cp -n .env.example .env
 Fill in only the settings needed for the service you want to run. Keep an
 existing `.env` and add missing keys from [.env.example](.env.example) manually;
 do not replace it with the template. The root file holds PostgreSQL, Discord,
-and catalog migration/runtime settings. There is no service-local `.env`.
+and catalog/guild migration/runtime settings. There is no service-local `.env`.
 
 Mise loads root `.env` for its tasks and commands, including from subdirectories.
 Its values replace existing process variables locally, even when blank. All
@@ -75,11 +76,15 @@ PostgreSQL.
 | `mise run java:build` | Build and test Java modules using prepared sources |
 | `mise run java:conventions:check` | Check the Gradle convention plugins |
 | `mise run catalog:dev` | Start the catalog service using its runtime settings |
+| `mise run guild:prepare` | Explicitly migrate the guild schema and generate jOOQ sources |
+| `mise run guild:test` | Run transactional SQL assertions against the prepared guild schema |
 
 For catalog development, fill in the PostgreSQL and catalog settings, start the
 database, and create the catalog schema and its migration/application roles
-outside Gradle. Then run `mise run catalog:prepare` before `mise run java:build`
-or `mise run catalog:dev`. Generated jOOQ sources are not committed, so a fresh
+outside Gradle. Run `mise run catalog:prepare` before `mise run catalog:dev`.
+The full-root `mise run java:build` requires both `catalog:prepare` and
+`guild:prepare`; each schema module verifies its own generated sources.
+Generated jOOQ sources are not committed, so a fresh
 checkout, a clean or a migration change needs this explicit preparation.
 Builds and startup never run migrations. The preparation task includes
 `--no-configuration-cache` because database tasks do not support that cache.
@@ -89,6 +94,16 @@ Catalog migration settings use `CATALOG_DB_URL`, `CATALOG_DB_USER` and
 legacy Gradle property, even when blank; properties are a fallback only when
 the variable is absent. Runtime uses the JDBC URL plus `CATALOG_R2DBC_URL`,
 `CATALOG_APP_DB_USER` and `CATALOG_APP_DB_PASSWORD`.
+
+For guild-schema development, set `GUILD_DB_URL`, `GUILD_DB_USER`,
+`GUILD_DB_PASSWORD`, `GUILD_APP_DB_USER` and `GUILD_APP_DB_PASSWORD`
+in the existing root `.env`. Bootstrap its schema and roles with
+[bootstrap-guild.sql](tools/postgres/bootstrap-guild.sql) before running
+`mise run guild:prepare`. Run `mise run guild:test` only against an empty,
+disposable migrated database. Its SQL fixtures roll back; ordinary builds never
+migrate or test a database.
+The [guild schema guide](services/guild/schema/README.md) describes the
+migrations, setup commands and remaining policy decisions.
 
 [ADR 0007](docs/decisions/0007-per-service-database-schemas.md) describes database
 preparation. [ADR 0010](docs/decisions/0010-centralized-development-workflow.md)

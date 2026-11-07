@@ -107,6 +107,16 @@ description = "Run the catalog Java service using the prepared schema"
 dir = "{{config_root}}"
 run = "./gradlew :services:catalog:server:bootRun"
 
+[tasks."guild:prepare"]
+description = "Explicitly migrate the guild schema and generate jOOQ sources"
+dir = "{{config_root}}"
+run = "./gradlew :services:guild:schema:prepareSchema --no-configuration-cache"
+
+[tasks."guild:test"]
+description = "Check the prepared guild schema with transactional SQL assertions"
+dir = "{{config_root}}"
+run = "tools/postgres/test-guild.sh"
+
 [tasks."db:up"]
 description = "Start the local PostgreSQL database and wait for readiness"
 dir = "{{config_root}}"

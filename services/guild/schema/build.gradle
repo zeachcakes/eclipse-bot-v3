@@ -1,0 +1,9 @@
+plugins {
+    id 'service-schema-conventions'
+}
+
+schemaDatabase {
+    schemaName = 'guild'
+    generatedPackage = 'com.clashofclans.eclipse.guild.jooq'
+    connectionKey = 'guild'
+}
