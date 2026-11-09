@@ -1,8 +1,10 @@
 # Star-schema working plan
 
-Working draft from the requirements discussion through 7 November 2026. This
-records agreed behavior separately from proposed tables and open decisions.
-It is a design document, not an implemented schema or migration.
+Historical working draft from the requirements discussion through 7 November
+2026. The [feature specifications](../feature-specs/README.md) record the later
+agreed requirements and supersede older or still-provisional rules below where
+the follow-up discussion resolved them. This file preserves the earlier design
+discussion and its open questions.
 
 The selected design is a star schema with activity-specific facts and shared
 dimensions. CoC activity and Discord utility activity are both in scope.
