@@ -12,6 +12,9 @@ catalog:
 discord:
   - changed-files:
       - any-glob-to-any-file: ["services/discord/**"]
+guild:
+  - changed-files:
+      - any-glob-to-any-file: ["services/guild/**"]
 libraries:
   - changed-files:
       - any-glob-to-any-file: ["libraries/**"]

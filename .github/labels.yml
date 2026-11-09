@@ -5,9 +5,24 @@
 - {name: "database", color: "#c2e0c6", description: "Schemas, migrations and local PostgreSQL"}
 - {name: "catalog", color: "#c2e0c6", description: "The catalog service"}
 - {name: "discord", color: "#c2e0c6", description: "The Discord interaction service"}
+- {name: "guild", color: "#c2e0c6", description: "The guild service"}
 - {name: "libraries", color: "#c2e0c6", description: "Shared libraries"}
 # GitHub's default label, kept as it is.
 - {name: "documentation", color: "#0075ca", description: "Improvements or additions to documentation"}
 - {name: "tooling", color: "#c2e0c6", description: "mise, pre-commit and editor settings"}
 - {name: "ci", color: "#c2e0c6", description: "GitHub Actions workflows and repository automation"}
 - {name: "dependencies", color: "#0366d6", description: "Changes dependency or tool versions"}
+# Issue labels for feature planning. The labeler does not apply these to pull requests.
+- {name: "epic", color: "#5319e7", description: "Groups the sub-issues of one feature"}
+- {name: "configuration", color: "#bfd4f2", description: "Configuration, permissions and audit"}
+- {name: "account-linking", color: "#bfd4f2", description: "Account verification, links, transfers and attribution"}
+- {name: "membership", color: "#bfd4f2", description: "Clan membership, Discord onboarding and roles"}
+- {name: "regular-wars", color: "#bfd4f2", description: "Regular-war tracking and reminders"}
+- {name: "clan-games", color: "#bfd4f2", description: "Clan Games collection and assessment"}
+- {name: "raid-weekends", color: "#bfd4f2", description: "Raid Weekend announcements and account totals"}
+- {name: "cwl", color: "#bfd4f2", description: "CWL sign-ups, planning and substitutions"}
+- {name: "custom-events", color: "#bfd4f2", description: "Custom-event sign-ups and results"}
+- {name: "chat-xp", color: "#bfd4f2", description: "Chat XP, eligibility and ranks"}
+- {name: "moderation", color: "#bfd4f2", description: "Warnings, kicks and leadership notifications"}
+- {name: "leaderboards", color: "#bfd4f2", description: "Leaderboard eligibility, metrics and reporting periods"}
+- {name: "notifications", color: "#bfd4f2", description: "Kafka-backed notifications and Discord delivery"}
