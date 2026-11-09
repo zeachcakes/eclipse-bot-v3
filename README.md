@@ -26,6 +26,7 @@ will be added to the Java backend.
 | [tools/gradle](tools/gradle) | Gradle convention plugins |
 | [docs/development.md](docs/development.md) | Shared development guide |
 | [docs/decisions](docs/decisions) | Architecture decision records |
+| [docs/feature-specs](docs/feature-specs/README.md) | Agreed feature requirements for future GitHub issues |
 | [.github](.github) | GitHub Actions workflows (CI, PR title, labels), Dependabot and labeler configuration |
 
 ## Repository instructions
