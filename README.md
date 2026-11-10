@@ -27,6 +27,11 @@ will be added to the Java backend.
 | [docs/decisions](docs/decisions) | Architecture decision records |
 | [.github](.github) | GitHub Actions workflows (CI, PR title, labels), Dependabot and labeler configuration |
 
+## Repository instructions
+
+[AGENTS.md](AGENTS.md) contains the shared GitHub commit strategy for Codex and
+Claude. [CLAUDE.md](CLAUDE.md) imports those instructions for Claude.
+
 ## Getting started
 
 Run commands from the repository root. Install the pinned tools and the Discord
