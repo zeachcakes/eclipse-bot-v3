@@ -6,6 +6,13 @@ decision-makers: Kanishk Gupta
 
 # Centralized development commands and local configuration
 
+Updated by [ADR 0011](0011-schema-preparation-before-development-startup.md):
+`catalog:dev` now prepares the schema before starting the service and disables
+the configuration cache. Its startup behavior supersedes the explicit-preparation
+policy below; shared configuration and ordinary build behavior remain unchanged.
+Current setup, configuration and command instructions are consolidated in the
+[development guide](../development.md).
+
 ## Context and Problem Statement
 
 The repository combines Java services, a TypeScript Discord service and local
@@ -52,10 +59,9 @@ package does not repeat the Node.js pin in `engines`. Application libraries and
 TypeScript remain project-local npm dependencies. The mise npm backend is for
 CLI tools, so it does not replace the application manifest or npm lockfile.
 
-When adding or updating a package, run
-`mise exec -- npm install --prefix services/discord <package>@<version>` from the
-repository root, adding `--save-dev` for a development dependency. Review and
-commit the manifest and lockfile changes together.
+The [dependency update workflow](../development.md#dependency-updates) keeps
+package changes in the owning service. Manifest and lockfile changes are
+reviewed and committed together.
 
 ### Setup and tasks
 
@@ -66,20 +72,9 @@ that depends on `discord:install`, so it installs pinned tools and then runs
 installs tools but does not install project libraries.
 
 Setup does not create credentials, register Discord commands, start services or
-prepare a database. Installing Git hooks remains optional with
-`mise exec -- pre-commit install`.
-
-| Task | Underlying operation |
-| --- | --- |
-| `discord:install` | `npm ci --ignore-scripts` in the Discord package |
-| `discord:check`, `discord:test`, `discord:build` | The package's check, test and build scripts |
-| `discord:dev`, `discord:start`, `discord:register` | The package's development, production and registration scripts |
-| `discord:ci` | Depend on install, then run check, test and build in sequence |
-| `java:build` | `./gradlew build` |
-| `java:conventions:check` | The included convention-plugin build's check task |
-| `catalog:prepare` | Explicit catalog preparation with `--no-configuration-cache` |
-| `catalog:dev` | The catalog server's `bootRun` task |
-| `db:up`, `db:down` | Start PostgreSQL with a readiness wait, or stop it while retaining data |
+prepare a database. Git hook installation is optional. The current
+[command reference](../development.md#command-reference) lists the shared tasks
+and their underlying operations.
 
 Task directories are anchored to `config_root`, so invoking them from a service
 directory behaves the same as invoking them from the repository root. npm
@@ -95,10 +90,10 @@ ADR 0007's separation between database changes and ordinary builds.
 
 ### One local environment file
 
-Keep one untracked root `.env` and one root `.env.example`. Initialize `.env`
-only if it does not exist, for example with `cp -n .env.example .env`. Existing
-files are preserved; add missing setting names manually. Do not copy a template
-over existing credentials or create service-local dotenv files.
+Keep one untracked root `.env` and one root `.env.example`. The
+[local configuration workflow](../development.md#local-configuration) preserves
+existing credentials when initializing or updating that file. Service-local
+dotenv files are not used.
 
 The root configuration loads it with:
 

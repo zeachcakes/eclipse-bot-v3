@@ -8,8 +8,12 @@ decision-makers: Kanishk Gupta
 
 Updated by [ADR 0010](0010-centralized-development-workflow.md): local settings
 now come from the single root `.env` through mise, environment variables take
-precedence over legacy Gradle properties, and root tasks wrap the commands below.
-Schema ownership and explicit database preparation remain unchanged.
+precedence over legacy Gradle properties, and root tasks wrap the Gradle commands.
+Schema ownership remains unchanged. [ADR 0011](0011-schema-preparation-before-development-startup.md)
+supersedes the startup policy below: configured Gradle `bootRun` tasks prepare
+the schema automatically, while ordinary builds still require prepared sources.
+The task graphs below describe the original decision. Current setup, startup
+and troubleshooting instructions are in the [development guide](../development.md).
 
 ## Context and Problem Statement
 
@@ -134,30 +138,12 @@ compileJava, check -> verifyGeneratedJooq
 
 ## More Information
 
-### Commands
+### Development workflow
 
-These are the underlying Gradle commands. Prefer the root `catalog:prepare`,
-`java:build` and `catalog:dev` mise tasks for the shared environment and toolchain
-described in ADR 0010. Build and startup tasks still never run preparation.
-
-```sh
-# Check the settings, inspect the history, prepare, then validate.
-./gradlew :services:catalog:schema:validateSchemaDatabase --no-configuration-cache
-./gradlew :services:catalog:schema:flywayInfo --no-configuration-cache
-./gradlew :services:catalog:schema:prepareSchema --no-configuration-cache
-./gradlew :services:catalog:schema:flywayValidate --no-configuration-cache
-
-# After preparation, builds need no database or credentials.
-./gradlew build
-
-# Clean rebuild.
-./gradlew clean
-./gradlew :services:catalog:schema:prepareSchema --no-configuration-cache
-./gradlew build
-
-# Run the server. It needs the runtime settings above.
-./gradlew :services:catalog:server:bootRun
-```
+Use the [development guide](../development.md) for current setup, preparation,
+build and startup commands. [ADR 0011](0011-schema-preparation-before-development-startup.md)
+records the automatic preparation now performed by configured Gradle startup
+tasks.
 
 ### Adding a service
 
@@ -172,15 +158,9 @@ For a service named `orders`:
 
 ### Troubleshooting
 
-| Symptom | Fix |
-| --- | --- |
-| `Generated jOOQ sources ... are missing or stale` | Run the module's `prepareSchema`. Never disable verification |
-| `Database preparation does not support the configuration cache` | Add `--no-configuration-cache` |
-| `No Flyway database plugin found` | Keep `flyway-database-postgresql` on the plugin classpath (ADR 0006) |
-| Migration fails because the schema does not exist | Create the schema and its roles first. Flyway never creates them |
-| Listing tasks asks for a password | A regression: settings must only be read when a database task runs |
-| A plain build starts migration or generation | A regression: check the task graph above |
-| No JDBC `DataSource` or `DSLContext` at runtime | Keep the explicit JDBC configuration. R2DBC makes Boot back off |
+See [development troubleshooting](../development.md#troubleshooting). The task
+graph and runtime configuration above describe the invariants to preserve when
+diagnosing build regressions.
 
 ### References
 

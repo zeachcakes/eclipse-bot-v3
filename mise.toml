@@ -103,9 +103,9 @@ dir = "{{config_root}}"
 run = "./gradlew :services:catalog:schema:prepareSchema --no-configuration-cache"
 
 [tasks."catalog:dev"]
-description = "Run the catalog Java service using the prepared schema"
+description = "Migrate, generate jOOQ sources and run the catalog Java service"
 dir = "{{config_root}}"
-run = "./gradlew :services:catalog:server:bootRun"
+run = "./gradlew :services:catalog:server:bootRun --no-configuration-cache"
 
 [tasks."db:up"]
 description = "Start the local PostgreSQL database and wait for readiness"

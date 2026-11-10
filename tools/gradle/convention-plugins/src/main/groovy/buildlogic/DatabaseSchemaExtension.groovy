@@ -1,6 +1,7 @@
 package buildlogic
 
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.ListProperty
 
 import javax.lang.model.SourceVersion
 
@@ -11,6 +12,9 @@ abstract class DatabaseSchemaExtension {
     abstract Property<String> getGeneratedPackage()
 
     abstract Property<String> getConnectionKey()
+
+    /** Unqualified base-table names checked after migration, before generation. */
+    abstract ListProperty<String> getRequiredTables()
 
     static void validateNamespace(String modulePath, String schemaName, String connectionKey,
             String generatedPackage, String basePackage) {

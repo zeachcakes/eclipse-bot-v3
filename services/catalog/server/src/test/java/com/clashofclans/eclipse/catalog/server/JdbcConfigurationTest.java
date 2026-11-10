@@ -49,7 +49,7 @@ class JdbcConfigurationTest {
                 .withInitializer(context -> {
                     try {
                         var sources = new YamlPropertySourceLoader().load(
-                                "application", new ClassPathResource("application.yaml"));
+                                "application", new ClassPathResource("application.yml"));
                         sources.forEach(context.getEnvironment().getPropertySources()::addLast);
                     } catch (IOException failure) {
                         throw new UncheckedIOException(failure);

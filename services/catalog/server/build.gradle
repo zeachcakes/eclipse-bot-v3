@@ -10,3 +10,7 @@ dependencies {
 springBoot {
     mainClass = 'com.clashofclans.eclipse.catalog.server.CatalogApplication'
 }
+
+schemaPreparation {
+    schemaProjectPath = ':services:catalog:schema'
+}
