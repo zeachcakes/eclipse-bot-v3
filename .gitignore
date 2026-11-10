@@ -25,4 +25,6 @@ DEVELOPMENT.md
 
 ### CLAUDE ###
 CLAUDE.md
+# Share the root instructions while keeping local Claude configuration ignored.
+!/CLAUDE.md
 .claude/
