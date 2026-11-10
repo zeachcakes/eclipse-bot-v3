@@ -10,46 +10,19 @@ Kafka. Internal service communication will use gRPC. Those integrations are
 future work; this service does not yet call a backend or run jobs. See
 [ADR 0009](../../docs/decisions/0009-discord-interaction-service.md).
 
-## Prerequisites
-
-- Install [mise](https://mise.jdx.dev/getting-started.html) and confirm
-  `mise --version` works. Use a version that meets `min_version` in the root
-  [mise.toml](../../mise.toml); mise installs the project's pinned runtimes.
-- Use a Discord account that can install an application into your development
-  server.
-
-The starter bot runs without a running Java backend, PostgreSQL, Kafka or a
-Clash of Clans API key.
-
 ## Run locally
 
-### 1. Install dependencies and create the root environment file
+Complete the repository's [getting-started steps](../../docs/development.md#getting-started)
+first to install dependencies and create root `.env`. Shared configuration,
+[commands](../../docs/development.md#command-reference) and
+[dependency updates](../../docs/development.md#dependency-updates) are documented
+in the development guide.
 
-Run commands from the repository root. Mise owns the Node.js version and provides
-the development commands. Its setup task installs the pinned runtimes and tools,
-including Node.js 24 and its bundled npm, then this service's locked dependencies:
+The starter bot runs independently of Java, PostgreSQL and Kafka and does not
+need a Clash of Clans API key. You need a Discord account that can install an
+application into your development server.
 
-```sh
-mise run setup
-```
-
-`setup` depends on `discord:install`, which runs `npm ci --ignore-scripts` in
-`services/discord` using the committed `package-lock.json`. It needs registry
-access on a fresh checkout and replaces the service's existing `node_modules`.
-Plain `mise install` installs tools, not project libraries. Dependencies remain
-local to this npm package, and the Java Gradle build does not build it.
-
-Create root `.env` once, only if it does not already exist:
-
-```sh
-cp -n .env.example .env
-```
-
-Keep existing values and add missing keys from the root template manually. There
-is no separate Discord `.env`. Setup does not populate credentials, register
-commands, start the bot or prepare a database.
-
-### 2. Create the Discord application and fill in root `.env`
+### 1. Create the Discord application
 
 Fill in these three settings. PostgreSQL and catalog settings may remain empty
 when running only the Discord service:
@@ -60,13 +33,8 @@ when running only the Discord service:
 | `DISCORD_APPLICATION_ID` | The Application ID from General Information |
 | `DISCORD_GUILD_ID` | The ID of the server used for development |
 
-Mise loads that root file for its tasks and commands, including when invoked from
-the service directory. Its values override existing process variables locally,
-including blank values. All mise-launched subprocesses inherit the shared local
-environment, though only this service uses the Discord settings. Keep the token
-private and out of Git, screenshots and logs. Application and guild IDs remain
-strings throughout the service. [ADR 0010](../../docs/decisions/0010-centralized-development-workflow.md)
-records the shared configuration and CI behavior.
+Keep the token private and out of Git, screenshots and logs. Application and
+guild IDs remain strings throughout the service.
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
 2. Open **General Information** and copy the Application ID. Open **Bot** and
@@ -82,7 +50,7 @@ records the shared configuration and CI behavior.
 5. Enable Developer Mode in Discord's settings, right-click your server and
     select **Copy Server ID** for `DISCORD_GUILD_ID`.
 
-### 3. Register commands and start the bot
+### 2. Register commands and start the bot
 
 Once the application is installed in your server and root `.env` is filled in,
 run these commands from the repository root:
@@ -118,40 +86,12 @@ Guild command changes are available immediately.
 The registry supplies both the published command definitions and the interaction
 handlers. Commands are limited to the configured guild.
 
-## Checks and command reference
+## Checks
 
-To install the locked dependencies, type-check, test and build without connecting
-to Discord, run:
-
-```sh
-mise run discord:ci
-```
-
-| Root command | Package command | Purpose |
-| --- | --- | --- |
-| `mise run discord:install` | `npm ci --ignore-scripts` | Install the locked project dependencies |
-| `mise run discord:check` | `npm run check` | Type-check the service without emitting JavaScript |
-| `mise run discord:test` | `npm test` | Run the service's local tests |
-| `mise run discord:build` | `npm run build` | Compile TypeScript into `dist` |
-| `mise run discord:register` | `npm run register:commands` | Register the command set in the configured guild |
-| `mise run discord:dev` | `npm run dev` | Run TypeScript directly on Node.js 24 |
-| `mise run discord:start` | `npm start` | Run compiled JavaScript after a successful build |
-| `mise run discord:ci` | Install, then check, test and build | Run all service checks without connecting to Discord |
-
-The tasks wrap the npm scripts in `package.json` and set the working directory to
-`services/discord`. They work when invoked from the root or from the service
-directory; root mise configuration supplies the shared environment. The check,
-test, build and runtime tasks do not install npm dependencies automatically.
-`setup` and `discord:ci` depend on `discord:install`. Rerun the install task after
-checking out changes to the dependency manifest or lockfile. Build before running
-`discord:start`.
-
-`discord:ci` first depends on `discord:install`, then runs type checking, tests
-and compilation in sequence. The Node.js CI job installs the pinned Node.js
-runtime and invokes `mise run --skip-tools discord:ci`; skipping tool installation
-there avoids installing unrelated repository tools. It does not connect to
-Discord or register commands. CI sets `MISE_NO_ENV=1` to use its supplied process
-settings rather than loading local `.env` values.
+The development guide's [command reference](../../docs/development.md#command-reference)
+lists the Discord check commands. `discord:ci` installs locked
+dependencies, type-checks, tests and builds without connecting to Discord or
+registering commands.
 
 ## Run compiled JavaScript
 
@@ -172,25 +112,14 @@ TypeScript runtime loader is needed. npm scripts do not load dotenv files. When
 running them directly, supply settings through the process environment or use
 mise.
 
-## Dependency updates
-
-When adding or updating a dependency, run
-`mise exec -- npm install --prefix services/discord <package>@<version>` from the
-repository root, replacing the package and version placeholders. Add
-`--save-dev` for development dependencies. Commit the resulting `package.json`
-and `package-lock.json` changes together. Keep TypeScript and other package build
-tools in `devDependencies`, so the service uses their locked project versions.
-
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
-| Mise reports an untrusted configuration | Review root `mise.toml`, then run `mise trust` from the repository root and retry. |
 | `Missing required setting: DISCORD_...` | Fill in that setting in root `.env`, then stop and restart the mise command. |
 | `Invalid setting: DISCORD_...` | Copy the numeric Application ID or Server ID, rather than an application name, server name or invite link. |
 | Discord rejects the token | Use the bot token from the application's Bot page, rather than an OAuth client secret; update root `.env` and restart. |
 | `/ping` or `/help` is missing | Check the application is installed in the server, the application and guild IDs match that installation, and rerun `mise run discord:register`. |
-| A module or `tsc` cannot be found | Run `mise run discord:install` to restore the locked dependencies. |
 | `dist/main.js` cannot be found | Run `mise run discord:build` before `mise run discord:start`. |
 
 ## Adding interactions

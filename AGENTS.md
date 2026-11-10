@@ -67,7 +67,7 @@ docs(agents): Added shared GitHub commit instructions
 - Commit dependency manifests and their lockfiles together when changing
   dependencies, as described in [ADR 0010](docs/decisions/0010-centralized-development-workflow.md).
 - Run the checks relevant to the change using the commands in
-  [README.md](README.md). Run the repository hooks with
+  [development guide](docs/development.md). Run the repository hooks with
   `mise exec -- pre-commit run --all-files --show-diff-on-failure` after the
   pinned tools are installed. Review and restage any hook fixes before
   committing. Report checks that could not run and why.

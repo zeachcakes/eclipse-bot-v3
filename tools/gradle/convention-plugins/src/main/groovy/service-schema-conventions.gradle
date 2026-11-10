@@ -2,6 +2,7 @@ import buildlogic.DatabaseSchemaExtension
 import buildlogic.SchemaFiles
 import buildlogic.SchemaTaskSupport
 import buildlogic.VerifyGeneratedJooq
+import buildlogic.RequiredSchemaTables
 import nu.studer.gradle.jooq.JooqEdition
 import org.flywaydb.gradle.task.AbstractFlywayTask
 import org.gradle.api.artifacts.VersionCatalogsExtension
@@ -105,8 +106,35 @@ tasks.withType(AbstractFlywayTask).configureEach { task ->
     }
 }
 
-def generation = tasks.named('generateJooq') {
+def tableVerification = tasks.register('verifySchemaTables') {
+    group = 'database'
+    description = 'Check required tables with read-only metadata queries; never recreate missing tables.'
     dependsOn tasks.named('flywayMigrate')
+    notCompatibleWithConfigurationCache('Database credentials are resolved only during execution')
+    doLast {
+        def settings = SchemaTaskSupport.connection(project, schema)
+        def driverUrls = configurations.flywayMigration.files.collect { it.toURI().toURL() } as URL[]
+        // Isolate the JDBC driver, which belongs to the migration configuration rather than build logic.
+        new URLClassLoader(driverUrls, java.sql.Driver.classLoader).withCloseable { loader ->
+            def driverClass = loader.loadClass('org.postgresql.Driver')
+            try {
+                def driver = driverClass.getDeclaredConstructor().newInstance()
+                def properties = new Properties()
+                properties.setProperty('user', settings.user)
+                properties.setProperty('password', settings.password)
+                driver.connect(settings.url, properties).withCloseable { connection ->
+                    RequiredSchemaTables.verify(connection, schema.schemaName.get(), schema.requiredTables.get())
+                }
+            } finally {
+                // PostgreSQL registers itself statically; release its loader in long-lived Gradle daemons.
+                driverClass.getMethod('deregister').invoke(null)
+            }
+        }
+    }
+}
+
+def generation = tasks.named('generateJooq') {
+    dependsOn tableVerification
     allInputsDeclared = false
     outputs.upToDateWhen { false }
     outputs.doNotCacheIf('Introspection depends on a mutable external database') { true }
@@ -156,6 +184,11 @@ afterEvaluate {
     schema.schemaName.finalizeValue()
     schema.connectionKey.finalizeValue()
     schema.generatedPackage.finalizeValue()
+    def requiredTables = schema.requiredTables.getOrElse([])
+    if (requiredTables.empty || requiredTables.any { !(it ==~ /[a-z][a-z0-9_]*/) }) {
+        throw new GradleException("${project.path}: schemaDatabase.requiredTables must contain unqualified table names matching [a-z][a-z0-9_]*.")
+    }
+    schema.requiredTables.finalizeValue()
     SchemaTaskSupport.configureFlyway(flywayExtension, schema.schemaName.get(), migrationDirectory.asFile)
     mainJooq.generator.database.inputSchema = schema.schemaName.get()
     mainJooq.generator.target.packageName = schema.generatedPackage.get()

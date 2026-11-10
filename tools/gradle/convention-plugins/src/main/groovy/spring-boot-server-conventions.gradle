@@ -1,9 +1,25 @@
+import buildlogic.SchemaPreparationExtension
+
 plugins {
     id 'java-core-conventions'
     id 'org.springframework.boot'
 }
 
 def catalog = extensions.getByType(VersionCatalogsExtension).named('libs')
+def preparation = extensions.create('schemaPreparation', SchemaPreparationExtension)
+
+afterEvaluate {
+    if (preparation.schemaProjectPath.present) {
+        def schemaPath = preparation.schemaProjectPath.get()
+        if (!schemaPath.startsWith(':') || findProject(schemaPath) == null) {
+            throw new GradleException("${project.path}: schemaPreparation.schemaProjectPath must name an existing absolute project path.")
+        }
+        preparation.schemaProjectPath.finalizeValue()
+        tasks.named('bootRun') {
+            dependsOn schemaPath == ':' ? ':prepareSchema' : "${schemaPath}:prepareSchema"
+        }
+    }
+}
 
 dependencies {
     implementation platform(catalog.findLibrary('spring-boot-bom').get())

@@ -6,4 +6,5 @@ schemaDatabase {
     schemaName = 'catalog'
     generatedPackage = 'com.clashofclans.eclipse.catalog.jooq'
     connectionKey = 'catalog'
+    requiredTables = ['item']
 }
