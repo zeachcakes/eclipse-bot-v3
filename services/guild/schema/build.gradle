@@ -1,0 +1,35 @@
+plugins {
+    id 'service-schema-conventions'
+}
+
+schemaDatabase {
+    schemaName = 'guild'
+    generatedPackage = 'com.clashofclans.eclipse.guild.jooq'
+    connectionKey = 'guild'
+    // One base table from each migration that creates tables, V1 to V8.
+    requiredTables = [
+        'dim_guild', 'account_link', 'dim_war', 'warning', 'fact_configuration_change',
+        'cwl_cycle', 'notification_operation', 'dim_leaderboard_monthly_period',
+    ]
+}
+
+// Discord snowflakes are unsigned 64-bit integers kept in a numeric domain, so
+// generated code uses BigInteger for them instead of jOOQ's default BigDecimal.
+jooq {
+    configurations {
+        main {
+            generationTool {
+                generator {
+                    database {
+                        forcedTypes {
+                            forcedType {
+                                name = 'DECIMAL_INTEGER'
+                                includeTypes = '(?i:(guild\\.)?discord_snowflake)'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

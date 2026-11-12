@@ -4,7 +4,16 @@ Historical working draft from the requirements discussion through 7 November
 2026. The [feature specifications](../feature-specs/README.md) record the later
 agreed requirements and supersede older or still-provisional rules below where
 the follow-up discussion resolved them. This file preserves the earlier design
-discussion and its open questions.
+discussion and its open questions. The revised
+[guild star-schema design](guild-star-schema.md) describes the current SQL model;
+the older proposals and open questions below are historical context.
+
+The first SQL implementation is in
+[services/guild/schema](../../services/guild/schema/README.md); proposed
+grains and unresolved policies below remain distinguishable from final behavior.
+
+See the [ER diagrams](guild-er-diagram.md) for the implemented tables and
+physical foreign-key relationships.
 
 The selected design is a star schema with activity-specific facts and shared
 dimensions. CoC activity and Discord utility activity are both in scope.
@@ -358,10 +367,10 @@ configuration-history or account-link-history rules.
 
 ## Evidence and next design decisions
 
-The repository currently contains the Gradle scaffold and accepted PostgreSQL
-decision, with no implemented domain schema found during inspection. Flyway and
-jOOQ appear in the version catalog; their presence does not establish an
-implemented migration/data-access workflow.
+The initial inspection found only the Gradle scaffold and PostgreSQL decision.
+Main subsequently added Flyway/jOOQ schema conventions, the example catalog,
+and a database-free Discord interaction service (ADRs 0007–0010). The guild
+SQL implementation follows that current service-owned preparation workflow.
 
 The supplied documentation reference was inspected at commit
 2b9a93ca87f8e0b267ae837cd4d8a8b0d7a5d5dd:

@@ -6,8 +6,10 @@ feature-sized specifications for future GitHub issues and the next star-schema
 revision.
 
 The specifications describe target behavior. They do not claim that any SQL
-migrations or running services implement every requirement. Live service
-implementation and GitHub issue creation remain separate work.
+migrations or running services implement every requirement. The
+[guild star-schema design](../design/guild-star-schema.md) maps the requirements
+to implemented persistence and database invariants. Live service implementation
+and GitHub issue creation remain separate work.
 
 ## Feature catalog
 
@@ -87,6 +89,11 @@ After reviewing the requirements:
 5. Create feature issues referencing the requirements and scenarios. The
     [notification specification](notifications-and-delivery.md) includes proposed
     parent-issue and sub-issue workstreams.
+
+The [schema guide](../../services/guild/schema/README.md) and
+[ER diagrams](../design/guild-er-diagram.md) describe the persistence
+implementation. Runtime workers and external delivery remain separate from
+creating and validating database objects.
 
 ## Deliberately open boundaries
 

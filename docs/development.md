@@ -11,8 +11,8 @@ design rationale live in [the decisions directory](decisions).
 - [Mise](https://mise.jdx.dev/getting-started.html), meeting `min_version` in
   [mise.toml](../mise.toml). It installs the pinned runtimes and development tools;
   separate Java or Node.js installations are unnecessary.
-- Docker with Docker Compose for catalog development. The Discord service runs
-  independently of PostgreSQL and the Java backend.
+- Docker with Docker Compose for catalog and guild-schema development. The
+  Discord service runs independently of PostgreSQL and the Java backend.
 - For Discord development, an account allowed to install an application into a
   development server. See the [service guide](../services/discord/README.md).
 
@@ -48,7 +48,8 @@ Optionally install the local Git hooks:
 mise exec -- pre-commit install
 ```
 
-Continue with [catalog](#catalog-service) or [Discord](#discord-service).
+Continue with [catalog](#catalog-service), the [guild schema](#guild-schema)
+or [Discord](#discord-service).
 
 ## Local configuration
 
@@ -171,10 +172,12 @@ mise run db:down
 
 Ordinary Java builds and tests do not connect to or migrate a database.
 Generated jOOQ sources are untracked, so a fresh checkout, a clean, or a migration
-change needs explicit preparation before a build:
+change needs explicit preparation before a build. The full-root build needs
+both schemas prepared; each schema module verifies its own generated sources:
 
 ```sh
 mise run catalog:prepare
+mise run guild:prepare
 mise run java:build
 mise run java:conventions:check
 ```
@@ -182,6 +185,32 @@ mise run java:conventions:check
 After preparation, builds need neither a running database nor migration
 credentials. Do not bypass generated-source verification when it reports
 missing or stale output.
+
+## Guild schema
+
+The guild schema has no server module yet. Its migrations, SQL checks and
+generated jOOQ model live in `services/guild/schema`. The
+[guild schema guide](../services/guild/schema/README.md) describes the
+migrations, the setup commands and the remaining policy decisions.
+
+Set `GUILD_DB_URL`, `GUILD_DB_USER`, `GUILD_DB_PASSWORD`, `GUILD_APP_DB_USER`
+and `GUILD_APP_DB_PASSWORD` in the existing root `.env`. Use different
+migration and application roles. As the database administrator, create the
+schema and its roles with
+[bootstrap-guild.sql](../tools/postgres/bootstrap-guild.sql); the guild schema
+guide has the command. Then prepare the schema:
+
+```sh
+mise run guild:prepare
+```
+
+Run the SQL checks only against an empty, disposable migrated database:
+
+```sh
+mise run guild:test
+```
+
+The SQL fixtures roll back. Ordinary builds never migrate or test a database.
 
 ## Discord service
 
@@ -206,6 +235,8 @@ register commands or connect to Discord.
 | `mise run db:down` | Stop PostgreSQL while retaining its data |
 | `mise run catalog:prepare` | Explicitly migrate, check required tables, and generate jOOQ sources |
 | `mise run catalog:dev` | Prepare the catalog schema, compile, and start the service |
+| `mise run guild:prepare` | Explicitly migrate, check required tables, and generate jOOQ sources for the guild schema |
+| `mise run guild:test` | Run transactional SQL assertions against the prepared guild schema |
 | `mise run java:build` | Build and test Java modules using prepared sources |
 | `mise run java:conventions:check` | Check Gradle convention plugins |
 | `mise run discord:install` | Install locked npm dependencies with `npm ci --ignore-scripts` |
@@ -243,7 +274,7 @@ Add `--save-dev` for a development dependency. Commit `package.json` and
 | --- | --- |
 | Mise reports untrusted configuration | Review `mise.toml`, then run `mise trust` and retry |
 | A Discord module or `tsc` cannot be found | Run `mise run discord:install` |
-| Generated jOOQ sources are missing or stale | Configure the database and run `mise run catalog:prepare` |
+| Generated jOOQ sources are missing or stale | Configure the database and run `mise run catalog:prepare` or `mise run guild:prepare` |
 | Database preparation rejects the configuration cache | Use the mise task or add `--no-configuration-cache` to the Gradle invocation |
 | A blank setting overrides an exported value | Fill in or remove the blank root `.env` entry; restart the process |
 | The catalog schema or migration role does not exist | Provision them before running preparation |
