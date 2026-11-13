@@ -31,9 +31,10 @@ the configured Admin-role rule.
 - **CFG-005:** Only allowlisted developers can read configuration audit history.
   An Admin-role membership alone must not reveal that history or permit granting
   oneself developer status.
-- **CFG-006:** Audit human and automated changes with actor/system origin,
-  action, affected identity, time, applicable reason, and sanitized evidence.
-  Retain the audit history indefinitely.
+- **CFG-006:** Keep activity history as facts: war attacks, Clan Games points,
+  donations, clan joins and leaves, warnings, kicks and chat XP, each with its
+  actor or system origin, time and applicable reason. Keep configuration changes
+  with actor, reason and the values before and after. Retain both indefinitely.
 - **CFG-007:** Use stable Discord IDs for role/channel bindings and retain cached
   display names. A rename must not break a binding; a deletion must not erase its
   historical identity.

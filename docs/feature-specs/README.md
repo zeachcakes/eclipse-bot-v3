@@ -64,8 +64,10 @@ features, not a verified contract for every live API response.
     coverage. Missing evidence is not zero activity or proof of failure.
 7. Cumulative counters and repeated snapshots are nonadditive across time. Select
     supported snapshots or deltas rather than summing lifetime totals.
-8. Audit human and automated changes. Exclude credentials and player verification
-    tokens from payload archives, jobs, Kafka messages, and logs.
+8. Keep activity history as facts with their actor or system origin, and
+    configuration changes with their values before and after. Exclude
+    credentials and player verification tokens from payload archives, jobs,
+    Kafka messages, and logs.
 9. Java owns persistence, CoC API access, jobs, and Kafka processing. The
     discord.js service owns Discord interactions and API operations. Internal
     Java-to-Discord requests use gRPC.
