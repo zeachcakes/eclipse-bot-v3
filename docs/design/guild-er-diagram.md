@@ -3,7 +3,7 @@
 GitHub renders these Mermaid diagrams directly. They are generated from
 the migrated PostgreSQL catalog, not inferred from SQL text or application rows.
 
-This page covers **120 persisted tables and 276 foreign keys**
+This page covers **122 persisted tables and 283 foreign keys**
 in the `guild` schema. Every table is owned by one domain below; shared parents
 reappear as key-only anchors. Flyway history and views are outside the
 physical ER diagrams.
@@ -45,7 +45,7 @@ business rules.
 | [Discord presence and roles](#discord-presence-and-roles) | 5 |
 | [Chat XP and ranks](#chat-xp-and-ranks) | 7 |
 | [Warnings and moderation](#warnings-and-moderation) | 8 |
-| [CWL registration and signups](#cwl-registration-and-signups) | 11 |
+| [CWL registration and signups](#cwl-registration-and-signups) | 13 |
 | [CWL plans benches and exports](#cwl-plans-benches-and-exports) | 13 |
 | [Custom events](#custom-events) | 5 |
 | [Notification intents and Kafka](#notification-intents-and-kafka) | 16 |
@@ -654,11 +654,13 @@ erDiagram
 
     dim_clan_games_event {
         bigint event_key PK "identity"
-        timestamptz starts_at UK
+        timestamptz starts_at
         timestamptz ends_at
         integer account_points_cap
         text schedule_source
-        text source_correlation_id
+        text source_correlation_id UK
+        timestamptz voided_at "nullable"
+        bigint replaces_event_key FK, UK "nullable"
     }
 
     clan_games_read_request {
@@ -756,6 +758,7 @@ erDiagram
     dim_achievement ||..o{ clan_games_counter_read : "clan_games_counter_read_achievement_key_fkey"
     dim_clan |o..o{ clan_games_counter_read : "clan_games_counter_read_observed_clan_key_fkey"
     dim_clan |o..o{ clan_games_participation_evidence : "clan_games_participation_evidence_inferred_clan_key_fkey"
+    dim_clan_games_event |o..o| dim_clan_games_event : "clan_games_event_replaces_fkey"
     dim_clan_games_event ||..o{ clan_games_participation_evidence : "clan_games_participation_evidence_event_key_fkey"
     dim_clan_games_event ||..o{ clan_games_read_request : "clan_games_read_request_event_key_fkey"
     dim_clan_games_event ||..o{ fact_clan_games_progress : "fact_clan_games_progress_event_key_fkey"
@@ -879,9 +882,9 @@ erDiagram
         uuid operation_id UK
         bigint user_key FK
         text event_kind
+        text event_source
         timestamptz occurred_at
         integer new_joinee_policy_days "nullable"
-        timestamptz new_joinee_expires_at "nullable; generated"
         timestamptz observed_at
     }
 
@@ -1201,10 +1204,21 @@ erDiagram
 
     cwl_cycle {
         bigint cycle_key PK "identity"
-        date calendar_month UK
-        timestamptz signup_closes_at "nullable; generated"
+        date calendar_month
+        smallint month_sequence
         text state
         timestamptz ended_at "nullable"
+    }
+
+    fact_cwl_cycle_schedule_revision {
+        bigint schedule_revision_key PK "identity"
+        bigint cycle_key FK
+        integer revision
+        timestamptz signup_closes_at
+        bigint actor_user_key FK "nullable"
+        text reason "nullable"
+        uuid operation_id FK, UK "nullable"
+        timestamptz recorded_at
     }
 
     cwl_participating_clan {
@@ -1230,14 +1244,26 @@ erDiagram
         bigint war_key FK "nullable"
     }
 
-    fact_cwl_group_observation {
-        bigint group_observation_key PK "identity"
+    cwl_group_poll {
+        bigint cwl_group_poll_key PK "identity"
         bigint cycle_key FK
-        text source_season
-        text source_state
+        bigint clan_key FK
+        text source_correlation_id UK
         timestamptz observed_at
         timestamptz ingested_at
-        text source_correlation_id UK
+        text outcome
+        text failure_code "nullable"
+    }
+
+    fact_cwl_group_observation {
+        bigint group_observation_key PK "identity"
+        bigint cwl_group_poll_key FK, UK
+        bigint cycle_key FK
+        bigint clan_key FK
+        timestamptz observed_at FK
+        text poll_outcome FK "generated"
+        text source_season
+        text source_state
         boolean is_complete
     }
 
@@ -1257,7 +1283,8 @@ erDiagram
     cwl_round_war_reference {
         bigint group_observation_key PK, FK
         smallint round_ordinal PK
-        text source_war_tag PK, FK
+        smallint tag_position PK
+        text source_war_tag FK
         bigint war_key FK "nullable"
     }
 
@@ -1302,17 +1329,22 @@ erDiagram
         text source_war_tag UK "nullable"
     }
 
+    activity_command_operation |o..o| fact_cwl_cycle_schedule_revision : "fact_cwl_cycle_schedule_revision_operation_id_fkey"
     activity_command_operation ||..o| fact_cwl_participation_revision : "fact_cwl_participation_revision_operation_id_fkey"
     activity_command_operation ||..o| fact_cwl_signup_revision : "fact_cwl_signup_revision_operation_id_fkey"
+    clan_collection_settings ||..o{ cwl_group_poll : "cwl_group_poll_clan_key_fkey"
     clan_collection_settings ||..o{ cwl_participating_clan : "cwl_participating_clan_clan_key_fkey"
+    cwl_cycle ||..o{ cwl_group_poll : "cwl_group_poll_cycle_key_fkey"
     cwl_cycle ||..o{ cwl_participating_clan : "cwl_participating_clan_cycle_key_fkey"
     cwl_cycle ||..o{ cwl_signup : "cwl_signup_cycle_key_fkey"
-    cwl_cycle ||..o{ fact_cwl_group_observation : "fact_cwl_group_observation_cycle_key_fkey"
+    cwl_cycle ||..o{ fact_cwl_cycle_schedule_revision : "fact_cwl_cycle_schedule_revision_cycle_key_fkey"
+    cwl_group_poll ||..o| fact_cwl_group_observation : "fact_cwl_group_observation_cwl_group_poll_key_cycle_key_cl_fkey"
     cwl_participating_clan ||--o{ cwl_clan_day : "cwl_clan_day_participation_key_fkey"
     cwl_participating_clan ||..o{ fact_cwl_participation_revision : "fact_cwl_participation_revision_participation_key_fkey"
     cwl_participating_clan ||..o{ fact_cwl_signup_revision : "fact_cwl_signup_revision_participation_key_cycle_key_fkey"
     cwl_signup ||..o{ fact_cwl_signup_revision : "fact_cwl_signup_revision_signup_key_cycle_key_fkey"
     dim_clan ||--o{ fact_cwl_registered_clan : "fact_cwl_registered_clan_clan_key_fkey"
+    dim_discord_user |o..o{ fact_cwl_cycle_schedule_revision : "fact_cwl_cycle_schedule_revision_actor_user_key_fkey"
     dim_discord_user ||..o{ activity_command_operation : "activity_command_operation_actor_user_key_fkey"
     dim_discord_user ||..o{ fact_cwl_participation_revision : "fact_cwl_participation_revision_actor_user_key_fkey"
     dim_discord_user ||..o{ fact_cwl_signup_revision : "fact_cwl_signup_revision_actor_user_key_fkey"
@@ -1415,11 +1447,13 @@ erDiagram
         uuid operation_id FK, UK "nullable"
     }
 
-    cwl_bench_assignment {
-        bigint incident_key PK, FK
+    fact_cwl_bench_assignment_revision {
+        bigint bench_assignment_revision_key PK "identity"
+        bigint incident_key FK
         bigint participation_key FK
-        smallint war_day FK
-        timestamptz assigned_at
+        integer revision
+        smallint war_day FK "nullable"
+        timestamptz recorded_at
     }
 
     cwl_export_revision {
@@ -1502,7 +1536,7 @@ erDiagram
 
     activity_command_operation |o..o| fact_cwl_bench_resolution : "fact_cwl_bench_resolution_operation_id_fkey"
     activity_command_operation ||..o{ fact_cwl_manual_pin_revision : "fact_cwl_manual_pin_revision_operation_id_fkey"
-    cwl_clan_day ||..o{ cwl_bench_assignment : "cwl_bench_assignment_participation_key_war_day_fkey"
+    cwl_clan_day |o..o{ fact_cwl_bench_assignment_revision : "fact_cwl_bench_assignment_revisi_participation_key_war_day_fkey"
     cwl_clan_day ||..o{ fact_cwl_manual_pin_revision : "fact_cwl_manual_pin_revision_participation_key_war_day_fkey"
     cwl_clan_day ||..o| fact_cwl_day_freeze : "fact_cwl_day_freeze_participation_key_war_day_war_key_fkey"
     cwl_export_revision ||..o{ cwl_export_signup_input : "cwl_export_signup_input_export_revision_key_resource_kind_fkey"
@@ -1524,7 +1558,7 @@ erDiagram
     dim_player_account ||..o{ fact_cwl_bench_incident : "fact_cwl_bench_incident_player_key_fkey"
     dim_war ||..o{ fact_cwl_bench_incident : "fact_cwl_bench_incident_war_key_fkey"
     fact_cwl_bench_incident ||--o| fact_cwl_bench_resolution : "fact_cwl_bench_resolution_incident_key_fkey"
-    fact_cwl_bench_incident ||..o| cwl_bench_assignment : "cwl_bench_assignment_incident_key_participation_key_fkey"
+    fact_cwl_bench_incident ||..o{ fact_cwl_bench_assignment_revision : "fact_cwl_bench_assignment_rev_incident_key_participation_k_fkey"
     fact_cwl_plan_input ||..o{ cwl_plan_assignment : "cwl_plan_assignment_plan_key_player_key_fkey"
     fact_cwl_signup_revision |o..o{ cwl_export_revision : "cwl_export_revision_signup_revision_key_fkey"
     fact_cwl_signup_revision ||..o{ cwl_export_signup_input : "cwl_export_signup_input_signup_revision_key_signup_key_fkey"
@@ -1704,6 +1738,7 @@ erDiagram
     notification_cwl_context {
         uuid operation_key PK, FK
         bigint cycle_key FK
+        bigint schedule_revision_key FK "nullable"
         bigint participation_key FK "nullable"
         bigint plan_key FK "nullable"
         smallint war_day "nullable"
@@ -1815,6 +1850,11 @@ erDiagram
         bigint player_key FK
     }
 
+    fact_cwl_cycle_schedule_revision {
+        bigint schedule_revision_key PK "identity"
+        bigint cycle_key FK
+    }
+
     fact_moderation_action_attempt {
         bigint moderation_attempt_key PK "identity"
     }
@@ -1862,6 +1902,7 @@ erDiagram
     dim_war |o..o{ notification_operation : "notification_operation_war_key_fkey"
     fact_clan_games_member_assessment ||..o{ notification_clan_games_report_assessment : "notification_clan_games_repor_member_assessment_key_event__fkey"
     fact_clan_games_progress ||..o{ notification_clan_games_report_progress : "notification_clan_games_repor_progress_key_event_key_playe_fkey"
+    fact_cwl_cycle_schedule_revision |o..o{ notification_cwl_context : "notification_cwl_context_schedule_revision_key_cycle_key_fkey"
     fact_moderation_action_attempt |o..o{ notification_moderation_context : "notification_moderation_context_moderation_attempt_key_fkey"
     fact_moderation_action_transition |o..o{ notification_moderation_context : "notification_moderation_context_moderation_transition_key_fkey"
     fact_moderation_notice |o..o{ notification_moderation_context : "notification_moderation_context_moderation_notice_key_fkey"
@@ -2023,7 +2064,7 @@ erDiagram
 ## Full foreign-key reference
 
 <details>
-<summary>All 276 declared foreign keys and their column mappings</summary>
+<summary>All 283 declared foreign keys and their column mappings</summary>
 
 | Child table | Constraint | Child columns | Parent table | Referenced columns | Match |
 | --- | --- | --- | --- | --- | --- |
@@ -2080,8 +2121,6 @@ erDiagram
 | `custom_roster_revision` | `custom_roster_revision_actor_user_key_fkey` | `actor_user_key` | `dim_discord_user` | `user_key` | SIMPLE |
 | `custom_roster_revision` | `custom_roster_revision_event_key_fkey` | `event_key` | `custom_event` | `event_key` | SIMPLE |
 | `custom_roster_revision` | `custom_roster_revision_operation_id_fkey` | `operation_id` | `activity_command_operation` | `operation_id` | SIMPLE |
-| `cwl_bench_assignment` | `cwl_bench_assignment_incident_key_participation_key_fkey` | `incident_key, participation_key` | `fact_cwl_bench_incident` | `incident_key, participation_key` | SIMPLE |
-| `cwl_bench_assignment` | `cwl_bench_assignment_participation_key_war_day_fkey` | `participation_key, war_day` | `cwl_clan_day` | `participation_key, war_day` | SIMPLE |
 | `cwl_clan_day` | `cwl_clan_day_participation_key_fkey` | `participation_key` | `cwl_participating_clan` | `participation_key` | SIMPLE |
 | `cwl_clan_day` | `cwl_clan_day_war_key_fkey` | `war_key` | `dim_war` | `war_key` | SIMPLE |
 | `cwl_export_revision` | `cwl_export_revision_participation_key_fkey` | `participation_key` | `cwl_participating_clan` | `participation_key` | SIMPLE |
@@ -2089,6 +2128,8 @@ erDiagram
 | `cwl_export_revision` | `cwl_export_revision_signup_revision_key_fkey` | `signup_revision_key` | `fact_cwl_signup_revision` | `signup_revision_key` | SIMPLE |
 | `cwl_export_signup_input` | `cwl_export_signup_input_export_revision_key_resource_kind_fkey` | `export_revision_key, resource_kind` | `cwl_export_revision` | `export_revision_key, resource_kind` | SIMPLE |
 | `cwl_export_signup_input` | `cwl_export_signup_input_signup_revision_key_signup_key_fkey` | `signup_revision_key, signup_key` | `fact_cwl_signup_revision` | `signup_revision_key, signup_key` | SIMPLE |
+| `cwl_group_poll` | `cwl_group_poll_clan_key_fkey` | `clan_key` | `clan_collection_settings` | `clan_key` | SIMPLE |
+| `cwl_group_poll` | `cwl_group_poll_cycle_key_fkey` | `cycle_key` | `cwl_cycle` | `cycle_key` | SIMPLE |
 | `cwl_participating_clan` | `cwl_participating_clan_clan_key_fkey` | `clan_key` | `clan_collection_settings` | `clan_key` | SIMPLE |
 | `cwl_participating_clan` | `cwl_participating_clan_cycle_key_fkey` | `cycle_key` | `cwl_cycle` | `cycle_key` | SIMPLE |
 | `cwl_plan_assignment` | `cwl_plan_assignment_plan_key_fkey` | `plan_key` | `cwl_plan_revision` | `plan_key` | SIMPLE |
@@ -2104,6 +2145,7 @@ erDiagram
 | `cwl_signup` | `cwl_signup_player_key_fkey` | `player_key` | `dim_player_account` | `player_key` | SIMPLE |
 | `developer_allowlist` | `developer_allowlist_added_by_fkey` | `added_by` | `dim_discord_user` | `user_key` | SIMPLE |
 | `developer_allowlist` | `developer_allowlist_user_key_fkey` | `user_key` | `dim_discord_user` | `user_key` | SIMPLE |
+| `dim_clan_games_event` | `clan_games_event_replaces_fkey` | `replaces_event_key` | `dim_clan_games_event` | `event_key` | SIMPLE |
 | `dim_leaderboard_monthly_period` | `dim_leaderboard_monthly_perio_calendar_policy_key_timezone_fkey` | `calendar_policy_key, timezone_name` | `leaderboard_calendar_policy` | `calendar_policy_key, timezone_name` | SIMPLE |
 | `dim_leaderboard_monthly_period` | `dim_leaderboard_monthly_period_previous_period_key_fkey` | `previous_period_key` | `dim_leaderboard_monthly_period` | `period_key` | SIMPLE |
 | `dim_raid_weekend` | `dim_raid_weekend_clan_key_fkey` | `clan_key` | `dim_clan` | `clan_key` | SIMPLE |
@@ -2147,6 +2189,8 @@ erDiagram
 | `fact_custom_event_signup_revision` | `fact_custom_event_signup_revision_actor_user_key_fkey` | `actor_user_key` | `dim_discord_user` | `user_key` | SIMPLE |
 | `fact_custom_event_signup_revision` | `fact_custom_event_signup_revision_operation_id_fkey` | `operation_id` | `activity_command_operation` | `operation_id` | SIMPLE |
 | `fact_custom_event_signup_revision` | `fact_custom_event_signup_revision_signup_key_fkey` | `signup_key` | `custom_event_signup` | `signup_key` | SIMPLE |
+| `fact_cwl_bench_assignment_revision` | `fact_cwl_bench_assignment_rev_incident_key_participation_k_fkey` | `incident_key, participation_key` | `fact_cwl_bench_incident` | `incident_key, participation_key` | SIMPLE |
+| `fact_cwl_bench_assignment_revision` | `fact_cwl_bench_assignment_revisi_participation_key_war_day_fkey` | `participation_key, war_day` | `cwl_clan_day` | `participation_key, war_day` | SIMPLE |
 | `fact_cwl_bench_incident` | `fact_cwl_bench_incident_attack_key_fkey` | `attack_key` | `fact_war_attack` | `attack_key` | SIMPLE |
 | `fact_cwl_bench_incident` | `fact_cwl_bench_incident_participation_key_fkey` | `participation_key` | `cwl_participating_clan` | `participation_key` | SIMPLE |
 | `fact_cwl_bench_incident` | `fact_cwl_bench_incident_player_key_fkey` | `player_key` | `dim_player_account` | `player_key` | SIMPLE |
@@ -2154,9 +2198,12 @@ erDiagram
 | `fact_cwl_bench_resolution` | `fact_cwl_bench_resolution_actor_user_key_fkey` | `actor_user_key` | `dim_discord_user` | `user_key` | SIMPLE |
 | `fact_cwl_bench_resolution` | `fact_cwl_bench_resolution_incident_key_fkey` | `incident_key` | `fact_cwl_bench_incident` | `incident_key` | SIMPLE |
 | `fact_cwl_bench_resolution` | `fact_cwl_bench_resolution_operation_id_fkey` | `operation_id` | `activity_command_operation` | `operation_id` | SIMPLE |
+| `fact_cwl_cycle_schedule_revision` | `fact_cwl_cycle_schedule_revision_actor_user_key_fkey` | `actor_user_key` | `dim_discord_user` | `user_key` | SIMPLE |
+| `fact_cwl_cycle_schedule_revision` | `fact_cwl_cycle_schedule_revision_cycle_key_fkey` | `cycle_key` | `cwl_cycle` | `cycle_key` | SIMPLE |
+| `fact_cwl_cycle_schedule_revision` | `fact_cwl_cycle_schedule_revision_operation_id_fkey` | `operation_id` | `activity_command_operation` | `operation_id` | SIMPLE |
 | `fact_cwl_day_freeze` | `fact_cwl_day_freeze_participation_key_war_day_war_key_fkey` | `participation_key, war_day, war_key` | `cwl_clan_day` | `participation_key, war_day, war_key` | SIMPLE |
 | `fact_cwl_export_attempt` | `fact_cwl_export_attempt_export_revision_key_fkey` | `export_revision_key` | `cwl_export_revision` | `export_revision_key` | SIMPLE |
-| `fact_cwl_group_observation` | `fact_cwl_group_observation_cycle_key_fkey` | `cycle_key` | `cwl_cycle` | `cycle_key` | SIMPLE |
+| `fact_cwl_group_observation` | `fact_cwl_group_observation_cwl_group_poll_key_cycle_key_cl_fkey` | `cwl_group_poll_key, cycle_key, clan_key, observed_at, poll_outcome` | `cwl_group_poll` | `cwl_group_poll_key, cycle_key, clan_key, observed_at, outcome` | SIMPLE |
 | `fact_cwl_manual_pin_revision` | `fact_cwl_manual_pin_revision_actor_user_key_fkey` | `actor_user_key` | `dim_discord_user` | `user_key` | SIMPLE |
 | `fact_cwl_manual_pin_revision` | `fact_cwl_manual_pin_revision_operation_id_fkey` | `operation_id` | `activity_command_operation` | `operation_id` | SIMPLE |
 | `fact_cwl_manual_pin_revision` | `fact_cwl_manual_pin_revision_participation_key_war_day_fkey` | `participation_key, war_day` | `cwl_clan_day` | `participation_key, war_day` | SIMPLE |
@@ -2249,6 +2296,7 @@ erDiagram
 | `notification_cwl_context` | `notification_cwl_context_operation_key_fkey` | `operation_key` | `notification_operation` | `operation_key` | SIMPLE |
 | `notification_cwl_context` | `notification_cwl_context_participation_key_cycle_key_fkey` | `participation_key, cycle_key` | `cwl_participating_clan` | `participation_key, cycle_key` | SIMPLE |
 | `notification_cwl_context` | `notification_cwl_context_plan_key_participation_key_fkey` | `plan_key, participation_key` | `cwl_plan_revision` | `plan_key, participation_key` | SIMPLE |
+| `notification_cwl_context` | `notification_cwl_context_schedule_revision_key_cycle_key_fkey` | `schedule_revision_key, cycle_key` | `fact_cwl_cycle_schedule_revision` | `schedule_revision_key, cycle_key` | SIMPLE |
 | `notification_cwl_signups_context` | `notification_cwl_signups_cont_export_revision_key_resource_fkey` | `export_revision_key, resource_kind` | `cwl_export_revision` | `export_revision_key, resource_kind` | SIMPLE |
 | `notification_cwl_signups_context` | `notification_cwl_signups_context_operation_key_fkey` | `operation_key` | `notification_operation` | `operation_key` | SIMPLE |
 | `notification_kafka_receipt` | `notification_kafka_receipt_operation_key_fkey` | `operation_key` | `notification_operation` | `operation_key` | SIMPLE |
@@ -2309,7 +2357,7 @@ erDiagram
 ## Unique-index reference
 
 <details>
-<summary>All 143 ordinary unique indexes, including composite and partial keys</summary>
+<summary>All 151 ordinary unique indexes, including composite and partial keys</summary>
 
 Primary-key columns are marked in the entities above. A partial index proves
 uniqueness only for rows satisfying its predicate and does not impose a
@@ -2347,21 +2395,25 @@ global one-to-one relationship in the diagrams.
 | `custom_roster_revision` | `custom_roster_revision_roster_key_event_key_key` | `roster_key, event_key` | Unconditional |
 | `cwl_clan_day` | `cwl_clan_day_participation_key_war_day_war_key_key` | `participation_key, war_day, war_key` | Unconditional |
 | `cwl_clan_day` | `cwl_clan_day_participation_key_war_key_key` | `participation_key, war_key` | Unconditional |
-| `cwl_cycle` | `cwl_cycle_calendar_month_key` | `calendar_month` | Unconditional |
+| `cwl_cycle` | `cwl_cycle_calendar_month_month_sequence_key` | `calendar_month, month_sequence` | Unconditional |
 | `cwl_export_revision` | `cwl_export_revision_export_revision_key_resource_kind_key` | `export_revision_key, resource_kind` | Unconditional |
 | `cwl_export_revision` | `cwl_export_revision_participation_key_resource_kind_export__key` | `participation_key, resource_kind, export_sequence` | Unconditional |
 | `cwl_export_revision` | `cwl_export_revision_participation_key_signup_revision_key_key` | `participation_key, signup_revision_key` | Unconditional |
 | `cwl_export_revision` | `cwl_export_revision_plan_key_key` | `plan_key` | Unconditional |
+| `cwl_group_poll` | `cwl_group_poll_cwl_group_poll_key_cycle_key_clan_key_observ_key` | `cwl_group_poll_key, cycle_key, clan_key, observed_at, outcome` | Unconditional |
+| `cwl_group_poll` | `cwl_group_poll_source_correlation_id_key` | `source_correlation_id` | Unconditional |
 | `cwl_participating_clan` | `cwl_participating_clan_cycle_key_clan_key_key` | `cycle_key, clan_key` | Unconditional |
 | `cwl_participating_clan` | `cwl_participating_clan_participation_key_cycle_key_key` | `participation_key, cycle_key` | Unconditional |
 | `cwl_plan_assignment` | `cwl_plan_assignment_plan_key_war_day_player_key_key` | `plan_key, war_day, player_key` | Unconditional |
 | `cwl_plan_revision` | `cwl_plan_revision_participation_key_revision_key` | `participation_key, revision` | Unconditional |
 | `cwl_plan_revision` | `cwl_plan_revision_plan_key_participation_key_key` | `plan_key, participation_key` | Unconditional |
+| `cwl_round_war_reference` | `cwl_round_war_reference_tag` | `group_observation_key, source_war_tag` | Partial: `(source_war_tag <> '#0'::text)` |
 | `cwl_signup` | `cwl_signup_cycle_key_player_key_key` | `cycle_key, player_key` | Unconditional |
 | `cwl_signup` | `cwl_signup_signup_key_cycle_key_key` | `signup_key, cycle_key` | Unconditional |
 | `dim_achievement` | `dim_achievement_source_name_village_key` | `source_name, village` | Unconditional |
 | `dim_clan` | `dim_clan_clan_tag_key` | `clan_tag` | Unconditional |
-| `dim_clan_games_event` | `dim_clan_games_event_starts_at_key` | `starts_at` | Unconditional |
+| `dim_clan_games_event` | `dim_clan_games_event_replaces_event_key_key` | `replaces_event_key` | Unconditional |
+| `dim_clan_games_event` | `dim_clan_games_event_source_correlation_id_key` | `source_correlation_id` | Unconditional |
 | `dim_coc_season` | `dim_coc_season_season_month_key` | `season_month` | Unconditional |
 | `dim_discord_channel` | `dim_discord_channel_discord_channel_id_key` | `discord_channel_id` | Unconditional |
 | `dim_discord_role` | `dim_discord_role_discord_role_id_key` | `discord_role_id` | Unconditional |
@@ -2392,13 +2444,17 @@ global one-to-one relationship in the diagrams.
 | `fact_clan_membership_change` | `fact_clan_membership_change_poll_key_player_key_change_kind_key` | `poll_key, player_key, change_kind` | Unconditional |
 | `fact_custom_event_signup_revision` | `fact_custom_event_signup_revision_operation_id_key` | `operation_id` | Unconditional |
 | `fact_custom_event_signup_revision` | `fact_custom_event_signup_revision_signup_key_revision_key` | `signup_key, revision` | Unconditional |
+| `fact_cwl_bench_assignment_revision` | `fact_cwl_bench_assignment_revision_incident_key_revision_key` | `incident_key, revision` | Unconditional |
 | `fact_cwl_bench_incident` | `fact_cwl_bench_incident_incident_key_participation_key_key` | `incident_key, participation_key` | Unconditional |
 | `fact_cwl_bench_incident` | `fact_cwl_bench_incident_participation_key_player_key_war_ke_key` | `participation_key, player_key, war_key` | Unconditional |
 | `fact_cwl_bench_resolution` | `fact_cwl_bench_resolution_operation_id_key` | `operation_id` | Unconditional |
+| `fact_cwl_cycle_schedule_revision` | `fact_cwl_cycle_schedule_revis_schedule_revision_key_cycle_k_key` | `schedule_revision_key, cycle_key` | Unconditional |
+| `fact_cwl_cycle_schedule_revision` | `fact_cwl_cycle_schedule_revision_cycle_key_revision_key` | `cycle_key, revision` | Unconditional |
+| `fact_cwl_cycle_schedule_revision` | `fact_cwl_cycle_schedule_revision_operation_id_key` | `operation_id` | Unconditional |
 | `fact_cwl_export_attempt` | `fact_cwl_export_attempt_export_revision_key_export_format_a_key` | `export_revision_key, export_format, attempt_number` | Unconditional |
 | `fact_cwl_export_attempt` | `fact_cwl_export_attempt_fence_key` | `fence` | Unconditional |
+| `fact_cwl_group_observation` | `fact_cwl_group_observation_cwl_group_poll_key_key` | `cwl_group_poll_key` | Unconditional |
 | `fact_cwl_group_observation` | `fact_cwl_group_observation_group_observation_key_cycle_key_key` | `group_observation_key, cycle_key` | Unconditional |
-| `fact_cwl_group_observation` | `fact_cwl_group_observation_source_correlation_id_key` | `source_correlation_id` | Unconditional |
 | `fact_cwl_manual_pin_revision` | `fact_cwl_manual_pin_revision_participation_key_war_day_slot_key` | `participation_key, war_day, slot_number, revision` | Unconditional |
 | `fact_cwl_participation_revision` | `fact_cwl_participation_revision_operation_id_key` | `operation_id` | Unconditional |
 | `fact_cwl_participation_revision` | `fact_cwl_participation_revision_participation_key_revision_key` | `participation_key, revision` | Unconditional |
@@ -2438,7 +2494,7 @@ global one-to-one relationship in the diagrams.
 | `notification_catchup_input` | `notification_catchup_input_source_operation_key_key` | `source_operation_key` | Unconditional |
 | `notification_clan_games_report_context` | `notification_clan_games_report_cont_operation_key_event_key_key` | `operation_key, event_key` | Unconditional |
 | `notification_cwl_context` | `notification_cwl_plan_day` | `plan_key, war_day` | Partial: `(plan_key IS NOT NULL)` |
-| `notification_cwl_context` | `notification_cwl_prompt` | `cycle_key` | Partial: `(plan_key IS NULL)` |
+| `notification_cwl_context` | `notification_cwl_prompt` | `schedule_revision_key` | Partial: `(plan_key IS NULL)` |
 | `notification_cwl_signups_context` | `notification_cwl_signups_context_export_revision_key_key` | `export_revision_key` | Unconditional |
 | `notification_kafka_receipt` | `notification_first_consumption` | `consumer_group, operation_key` | Partial: `is_first_for_operation` |
 | `notification_kafka_receipt` | `notification_kafka_receipt_consumer_group_kafka_topic_kafka_key` | `consumer_group, kafka_topic, kafka_partition, kafka_offset` | Unconditional |

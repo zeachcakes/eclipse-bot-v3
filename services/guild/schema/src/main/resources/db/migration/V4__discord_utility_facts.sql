@@ -6,6 +6,8 @@ CREATE TABLE guild.fact_discord_membership_event (
     operation_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     user_key bigint NOT NULL REFERENCES guild.dim_discord_user,
     event_kind text NOT NULL CHECK (event_kind IN ('join', 'departure')),
+    event_source text NOT NULL DEFAULT 'gateway_event'
+        CHECK (event_source IN ('gateway_event', 'member_list_sync')),
     occurred_at timestamptz NOT NULL,
     new_joinee_policy_days integer CHECK (new_joinee_policy_days > 0),
     new_joinee_expires_at timestamptz GENERATED ALWAYS AS
@@ -18,6 +20,26 @@ CREATE TABLE guild.fact_discord_membership_event (
 );
 CREATE INDEX discord_membership_user_history ON guild.fact_discord_membership_event
     (user_key, occurred_at DESC, membership_event_key DESC);
+COMMENT ON COLUMN guild.fact_discord_membership_event.event_source IS
+    'gateway_event: Discord delivered the join or the departure. member_list_sync: the collector '
+    'found the change by comparing the gateway member list with the stored presence, at startup '
+    'or after a reconnect, so no gateway event exists for it (CFG-010).';
+COMMENT ON COLUMN guild.fact_discord_membership_event.occurred_at IS
+    'The source time: the time of the gateway event, or the joined_at of the member for a '
+    'member_list_sync join. A member_list_sync departure has no source time. Its occurred_at is '
+    'the latest time at which the member can have left: the joined_at of the join that follows '
+    'it, or the time of the sync. It is an upper bound, never an observed departure time.';
+
+-- A join that the member list sync finds may be old: the first sync of an
+-- existing server finds every member. Such a join is welcomed only when the
+-- member joined at most this long before the sync (DEC-18, MEM-010).
+ALTER TABLE guild.guild_settings
+    ADD COLUMN welcome_sync_max_age_seconds integer NOT NULL DEFAULT 86400
+        CHECK (welcome_sync_max_age_seconds > 0);
+COMMENT ON COLUMN guild.guild_settings.welcome_sync_max_age_seconds IS
+    'A member_list_sync join sends the welcome only when its occurred_at, the joined_at of the '
+    'member, is at most this many seconds before its observed_at, the time of the sync. A '
+    'gateway_event join always sends it.';
 
 CREATE TABLE guild.discord_member_state (
     user_key bigint NOT NULL REFERENCES guild.dim_discord_user,

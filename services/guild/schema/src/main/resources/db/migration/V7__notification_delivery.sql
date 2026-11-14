@@ -239,7 +239,8 @@ CREATE TABLE guild.fact_notification_disposition (
     operation_key uuid PRIMARY KEY REFERENCES guild.notification_operation,
     disposition text NOT NULL CHECK (disposition IN ('expired', 'superseded')),
     cause text NOT NULL CHECK (cause IN ('expiry_passed', 'war_inactive', 'newer_report_revision',
-        'coalesced_into_catchup', 'role_generation_replaced', 'member_absent', 'no_unused_attacks')),
+        'coalesced_into_catchup', 'role_generation_replaced', 'member_absent', 'no_unused_attacks',
+        'schedule_changed')),
     superseded_by_operation_key uuid,
     occurred_at timestamptz NOT NULL,
     recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -247,6 +248,9 @@ CREATE TABLE guild.fact_notification_disposition (
         REFERENCES guild.notification_operation (operation_key),
     -- no_unused_attacks: a war reminder or catch-up found no roster account with
     -- an unused attack when its send began, so it is not sent (WAR-005).
+    -- schedule_changed: staff rescheduled the signups of a CWL cycle before its
+    -- leadership prompt was attempted, so the prompt of the earlier schedule is
+    -- not sent (CWL-018).
     CHECK ((disposition = 'expired') = (cause IN ('expiry_passed', 'war_inactive', 'no_unused_attacks'))),
     CHECK (cause NOT IN ('newer_report_revision', 'coalesced_into_catchup')
         OR superseded_by_operation_key IS NOT NULL),
@@ -278,21 +282,29 @@ JOIN guild.notification_operation n USING (operation_key)
 WHERE a.outcome IS NOT NULL AND n.channel_key IS NOT NULL;
 
 -- Typed source context keeps rendering independent of logical-key parsing.
+-- A leadership prompt belongs to one schedule revision of its cycle, so a
+-- rescheduled cycle can prompt again for its new close (CWL-018). A roster
+-- operation names a plan and a War Day instead.
 CREATE TABLE guild.notification_cwl_context (
     operation_key uuid PRIMARY KEY REFERENCES guild.notification_operation,
     cycle_key bigint NOT NULL,
+    schedule_revision_key bigint,
     participation_key bigint,
     plan_key bigint,
     war_day smallint CHECK (war_day BETWEEN 1 AND 7),
     FOREIGN KEY (cycle_key) REFERENCES guild.cwl_cycle (cycle_key),
+    FOREIGN KEY (schedule_revision_key, cycle_key)
+        REFERENCES guild.fact_cwl_cycle_schedule_revision (schedule_revision_key, cycle_key),
     FOREIGN KEY (participation_key, cycle_key)
         REFERENCES guild.cwl_participating_clan (participation_key, cycle_key),
     FOREIGN KEY (plan_key, participation_key)
         REFERENCES guild.cwl_plan_revision (plan_key, participation_key),
-    CHECK ((participation_key IS NULL AND plan_key IS NULL AND war_day IS NULL)
-        OR (participation_key IS NOT NULL AND plan_key IS NOT NULL AND war_day IS NOT NULL))
+    CHECK ((schedule_revision_key IS NOT NULL AND participation_key IS NULL AND plan_key IS NULL
+            AND war_day IS NULL)
+        OR (schedule_revision_key IS NULL AND participation_key IS NOT NULL AND plan_key IS NOT NULL
+            AND war_day IS NOT NULL))
 );
-CREATE UNIQUE INDEX notification_cwl_prompt ON guild.notification_cwl_context(cycle_key)
+CREATE UNIQUE INDEX notification_cwl_prompt ON guild.notification_cwl_context(schedule_revision_key)
 WHERE plan_key IS NULL;
 CREATE UNIQUE INDEX notification_cwl_plan_day ON guild.notification_cwl_context(plan_key,war_day)
 WHERE plan_key IS NOT NULL;

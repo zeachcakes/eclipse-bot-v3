@@ -23,7 +23,7 @@ does not confer the Co-leader/Admin actions described here.
 | --- | --- |
 | CWL-001 | Notify leadership one week before CWL starts so they can select eligible tracked clans before account signups open. Keep each participating clan's signup and plan distinct. Staff cannot withdraw a participating clan while any active signup targets it; they move or withdraw those signups first, so no signup loses its target silently (DEC-12, 2026-11-14). |
 | CWL-002 | Record signups per Clash account and target clan. The target may differ from the account's current clan. Availability selects War Days 1 through 7, rather than calendar dates; selected availability is a strict planning constraint. |
-| CWL-003 | Close normal signups at 00:00 GMT on the first day of the month. Immediately generate a provisional seven-day plan, before in-game registration is available. |
+| CWL-003 | Close normal signups at 00:00 GMT on the first day of the month, unless staff rescheduled the close (CWL-018). At the close, immediately generate a provisional seven-day plan, before in-game registration is available. |
 | CWL-004 | Co-leader/Admin staff may add late signups and edit availability after the deadline. Members cannot edit their own availability after close for now; that restriction can be reviewed later. |
 | CWL-005 | Support 15-player and 30-player daily lineups. Select the provisional plan using TH and availability before current-season performance exists. |
 | CWL-006 | The primary planning objective is to maximize the number of individual accounts reaching eight stars. Give accounts below eight priority; do not aggregate alts into a Discord-member score. |
@@ -38,6 +38,7 @@ does not confer the Co-leader/Admin actions described here.
 | CWL-015 | Automatic responses to late results affect the earliest suitable unfrozen future war. Do not automatically rewrite a frozen lineup, rewrite past participation, or carry an unserved penalty into another season. |
 | CWL-016 | Export signups and planned lineups as CSV and automatically synchronize Google Sheets when signups or lineups change. Preserve the distinction between database records, exported copies, and the actual in-game roster. Each export keeps the exact signup or plan revisions it lists and the Sheet it targeted; a Sheet never shows an older export after a newer one. A clan's configured CWL signups channel shows its current signup list as one Discord message, edited when signups change (owner decision, 2026-11-14). |
 | CWL-017 | Preserve signups, edits, plan versions, staff selections, freezes, performance evidence, bench decisions/service/overrides, and export outcomes so a historical lineup remains explainable. |
+| CWL-018 | The game has moved CWL and has run two CWLs in one month (owner decision, 2026-11-14). Staff can reschedule when the signups of a planning cycle close; the cycle keeps its signups, participating clans and history, and every reschedule keeps its actor, reason and time. A month with a second CWL gets a further planning cycle with its own signups, participating clans and plans. The default close of CWL-003 applies until staff change it. Decided on 2026-11-15 (DEC-21): Leadership, Co-leader or Admin can reschedule or create the further cycle. A later close reopens signups that had already closed, until the first War Day of the cycle freezes; the earlier plans stay as history. Leadership is always prompted again for the new date. Only one cycle is open at a time: the first cycle ends before the further cycle is created. |
 
 These constraints can make a complete lineup infeasible. Show missing slots or
 unverified eligibility rather than claiming a complete valid plan. In particular,
@@ -54,7 +55,7 @@ These are logical records, not final physical table names or a migration design.
 
 | Record | Grain and purpose |
 | --- | --- |
-| Planning cycle and participating clan | One bot planning cycle and one leadership-selected clan participation decision; preserve selection history. |
+| Planning cycle and participating clan | One bot planning cycle, one or more in a month, with the history of its signup close, and one leadership-selected clan participation decision; preserve selection history. |
 | Account signup | One account's signup for a target clan/cycle, with selected War Days and versioned member/staff edits. |
 | League-group observation | One fetched group observation, its raw source season string, member pools, ordered rounds, and source provenance. |
 | Registered player | One account in a clan's registered league pool at an observation. This is not current clan membership or a daily lineup. |
@@ -143,6 +144,17 @@ Do not store API credentials in observations or audit details.
 13. Staff try to withdraw Clan B while 12 active signups target it. The command
     is refused; after staff move or withdraw those signups, the withdrawal
     succeeds.
+14. The game moves CWL by two days. Staff reschedule the signup close. Existing
+    signups stay, signups close at the new time, and the earlier close with
+    the staff member who changed it remains in the history.
+15. The game runs a second CWL in one month. Staff try to create a further
+    planning cycle while the first is still open and are refused. After the
+    first cycle ended they create it. Its signups, participating clans and
+    plans are separate from the first cycle's.
+16. Signups closed and the provisional plan exists. Staff move the close two
+    days later. Members can sign up and edit again, the earlier plan remains
+    in the history, and leadership is prompted for the new date. After a War
+    Day has frozen, a reschedule is refused.
 
 ## Dependencies
 

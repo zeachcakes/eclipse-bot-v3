@@ -10,7 +10,7 @@ DECLARE
     regular_request bigint; baseline_fetch bigint; final_fetch bigint; baseline_read bigint;
     final_read bigint; participation bigint; progress bigint; episode bigint; other_episode bigint;
     proof bigint; assessment bigint; member_assessment bigint; other_member_assessment bigint;
-    earlier_member_assessment bigint;
+    earlier_member_assessment bigint; moved_event bigint; rescheduled_event bigint;
     starts timestamptz := date_trunc('hour', clock_timestamp()) - interval '20 days';
     ends timestamptz := date_trunc('hour', clock_timestamp()) - interval '14 days';
 BEGIN
@@ -70,6 +70,13 @@ BEGIN
             source_correlation_id)
         VALUES (starts, ends + interval '1 day', 4000, 'manual', 'manual:test');
         RAISE EXCEPTION 'Manual retry duplicated a scheduled event';
+    EXCEPTION WHEN exclusion_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+            source_correlation_id)
+        VALUES (ends + interval '20 days', ends + interval '26 days', 4000, 'configured_schedule', 'schedule:test');
+        RAISE EXCEPTION 'One schedule correlation created two events';
     EXCEPTION WHEN unique_violation THEN NULL;
     END;
     BEGIN
@@ -98,6 +105,61 @@ BEGIN
         RAISE EXCEPTION 'Retry silently changed frozen event evidence';
     EXCEPTION WHEN insufficient_privilege THEN NULL;
     END;
+    BEGIN
+        UPDATE guild.dim_clan_games_event SET starts_at = starts + interval '1 day' WHERE event_key = event_id;
+        RAISE EXCEPTION 'An event with wrong dates was edited instead of voided';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    -- CG-001: when the game moves Clan Games, the stored event is voided and
+    -- kept, and a manual event that names it takes the new dates. The window
+    -- of a voided event is free, and the schedule cannot create its month again.
+    INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+        source_correlation_id)
+    VALUES (starts + interval '60 days', ends + interval '60 days', 4000, 'configured_schedule', 'schedule:moved')
+    RETURNING event_key INTO moved_event;
+    UPDATE guild.dim_clan_games_event SET voided_at = clock_timestamp() WHERE event_key = moved_event;
+    INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+        source_correlation_id, replaces_event_key)
+    VALUES (starts + interval '61 days', ends + interval '61 days', 4000, 'manual', 'manual:rescheduled', moved_event)
+    RETURNING event_key INTO rescheduled_event;
+    BEGIN
+        INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+            source_correlation_id, replaces_event_key)
+        VALUES (starts + interval '120 days', ends + interval '120 days', 4000, 'manual', 'manual:second', moved_event);
+        RAISE EXCEPTION 'One voided event was replaced twice';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+            source_correlation_id, replaces_event_key)
+        VALUES (starts + interval '120 days', ends + interval '120 days', 4000, 'manual', 'manual:unknown', -1);
+        RAISE EXCEPTION 'An event replaced an event that does not exist';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+            source_correlation_id)
+        VALUES (starts + interval '90 days', ends + interval '90 days', 4000, 'configured_schedule', 'schedule:moved');
+        RAISE EXCEPTION 'The schedule created the month of a voided event again';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.dim_clan_games_event (starts_at, ends_at, account_points_cap, schedule_source,
+            source_correlation_id)
+        VALUES (starts + interval '62 days', ends + interval '62 days', 4000, 'manual', 'manual:overlapping');
+        RAISE EXCEPTION 'Two events that are not voided overlapped';
+    EXCEPTION WHEN exclusion_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE guild.dim_clan_games_event SET replaces_event_key = moved_event WHERE event_key = event_id;
+        RAISE EXCEPTION 'An existing event was turned into a replacement';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    IF NOT EXISTS (SELECT FROM guild.dim_clan_games_event WHERE event_key = moved_event AND voided_at IS NOT NULL)
+        OR (SELECT replaces_event_key FROM guild.dim_clan_games_event WHERE event_key = rescheduled_event)
+            <> moved_event THEN
+        RAISE EXCEPTION 'A rescheduled event lost the record it replaced';
+    END IF;
 
     -- Read requests. due_at is the checkpoint; collect_from opens the window in
     -- which the collector may take the read, so a boundary read can finish

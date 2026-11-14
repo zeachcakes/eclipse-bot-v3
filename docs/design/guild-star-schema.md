@@ -54,7 +54,9 @@ participating clans make 109. The review gaps added 11 more: kick decision
 transitions and attempt resolutions, notification dispositions, typed
 moderation, raid-start, CWL-signup and Clan Games progress context, raid polls
 and weekend observations, and CWL Sheets destinations with their signup inputs,
-which make 120. Shared
+which make 120. The schema review of 14 November 2026 added the CWL group
+polls and the schedule revisions of CWL cycles, and replaced the in-place
+bench assignment with bench assignment revisions, which make 122. Shared
 configuration, one-to-one workflow state, and duplicated analytical records
 share storage where they have the same identity. Views retain useful query
 interfaces without a second write or another copy of the same fact.
@@ -89,12 +91,12 @@ retain their distinct grains.
 | Membership | Complete roster polls, member state stored on change (role and donation counters), observed changes, supported presence intervals, and the season calendar that bounds donation totals |
 | Wars | One shared war dimension, one row per war poll as coverage proof, side/player participation, roster and clan observations and complete responses stored on change, and deduplicated attacks |
 | Profile counters | One player/profile observation or one player/achievement observation, with source and ingestion provenance |
-| Clan Games | Configured event, checkpoint request, source counter read, inferred affiliation, progress, owner-specific assessment slice, and versioned member assessment |
+| Clan Games | Configured event that staff can reschedule (void and replace) but not edit, checkpoint request, source counter read, inferred affiliation, progress, owner-specific assessment slice, and versioned member assessment |
 | Raid Weekends | One clan/weekend, every raid poll as coverage, and weekend state and account loot stored on change |
-| Discord presence | Individual join/departure occurrences and confirmed role changes, with usable current projections |
+| Discord presence | Individual join/departure occurrences, from the gateway or from a member list sync, and confirmed role changes, with usable current projections |
 | Chat XP | One durable message decision containing any random award; cumulative rank state and rank-change facts |
 | Moderation | Warning, revocation, kick decision and its transitions, pre-send attempt authorization with its result and later resolution, manual action from the audit log, accepted join, and leadership-notice intent |
-| CWL | Planning cycle, participating clan with its revisions, signup revisions that carry the target clan, observed registered pools, ordered war references, plan/input revisions, assignments, pin revisions, freezes, and bench evidence |
+| CWL | Planning cycle, one or more in a month, with the revisions of its signup close, participating clan with its revisions, signup revisions that carry the target clan, one row per league-group poll as coverage proof, registered pools and positioned war references stored on change, plan/input revisions, assignments, pin revisions, freezes, bench incidents and bench assignment revisions |
 | Custom events | One combined event signup pool with signup revisions, versions of one roster, and an optional write-once association to retained war evidence |
 | Leaderboards | Versioned calendar policy, immutable reporting periods, supported metric definitions, and source-specific projections |
 | Delivery | Typed logical operations with explicit mention targets, transactional outbox, publication/consumption evidence, dispatch authorizations, outcomes, report identities with typed context, and desired-role generations |
@@ -115,6 +117,15 @@ Clan Games uses the `Games Champion` cumulative achievement, identified by its
 name and village rather than array position. The achievement milestone is not
 the event cap. A configured event supplies dates and cap; source observations
 supply supported deltas. There is no manual-score path.
+
+An event is never edited. The game has moved Clan Games, and staff can enter
+wrong dates, so staff can reschedule an event: the stored event is voided and
+a manual event that names it takes the new dates. The voided event and its
+evidence stay as history, and its collection and assessment stop. Voiding
+says that the bot's record was wrong, not that the game cancelled Clan Games.
+Only events that are not voided may not overlap, so the replacement may use
+the same window. The schedule uses one correlation ID per month, unique among
+voided events too, so it does not create that month again.
 
 The regular active-event interval defaults to 900 seconds. Baseline, T−24-hour,
 final, and transfer reads are separate request rows. The regular read is one
@@ -169,6 +180,15 @@ decisions are durable, so retries cannot reroll or later credit a rejection.
 The award view selects credited decisions. Rank evidence references those
 credited records directly, with no second award insertion.
 
+Presence comes from gateway join and departure events and from a member list
+sync at startup and after each reconnect. The sync records what the gateway
+did not deliver: a join with the member's `joined_at`, or a departure whose
+time is only an upper bound. Each event names its source, so a reader can
+tell a delivered event from a reconstructed one. A join that the sync finds
+is welcomed only when the member joined within a configurable window before
+the sync, one day by default, so the first sync of an existing server does
+not welcome its long-standing members.
+
 Configured eligibility roles use OR semantics and require current Discord
 presence. Losing eligibility or leaving preserves earned XP and rank. The ten
 approved rank thresholds are seeded, with configured role bindings and a desired
@@ -212,10 +232,26 @@ generation when the same role set is submitted again.
 
 ## CWL and custom-event planning
 
+A planning cycle belongs to a calendar month. The scheduler creates the first
+cycle of each month, whose signups close at 00:00 GMT on the first day by
+default. The game has moved CWL and has run two in one month, so the close is
+a revision that staff can change, with actor and reason, and a month can have
+a further cycle with its own signups, clans and plans. Only one cycle is open
+at a time, so collected league groups and wars belong to that cycle. A later
+close reopens signups until the first War Day freezes. The leadership prompt
+belongs to one schedule revision, so a rescheduled cycle always prompts again
+for its new close.
+
 The bot's calendar cycle is separate from the API's opaque source season string
 (observed as `2026-11-02`). The group sample supplies no universal group ID;
 round ordinals and returned war tags retain their source context. Individual
 war bodies do not repeat that context.
+
+Every league-group poll keeps one row for its cycle and requesting clan, as
+proof that it ran. The group, its registered pools and its round references
+are stored only when they change, as the member list, wars and raids are. A
+round reference keeps its position in the source list, because a round that
+is not scheduled yet repeats the placeholder tag `#0`.
 
 Signups, registered league pools, bot plans, and actual daily participation are
 distinct. A signup may target another clan; actual eligibility uses that clan's
@@ -238,7 +274,9 @@ a later cutoff change cannot unfreeze the day or change its war. Manual staff ch
 recorded. Late evidence applies to an eligible unfrozen future war.
 
 Poor/missed-attack incidents are deduplicated. A bench assignment reserves the
-next available eligible day; actual service needs completed-war evidence. An
+next available eligible day; actual service needs completed-war evidence. Each
+reservation, move and release is a revision, so the day that an earlier plan
+kept free stays explainable. An
 unavailable day does not consume it. Automatic eligibility returns after service,
 and unserved incidents expire at season end. Multiple incidents do not silently
 invent an unapproved stacking rule. Export revisions retain signup/plan versions,

@@ -17,7 +17,7 @@ before resuming.
 - The shared dimensions, activity facts, temporal bridges and separate
   workflow state are the intended model. The review does not require a
   wholesale redesign.
-- The migrations contain 120 tables and 48 views, with no functions, triggers
+- The migrations contain 122 tables and 50 views, with no functions, triggers
   or procedural blocks. Java owns business rules, workflows and permission
   checks ([ADR 0012](../decisions/0012-guild-star-schema.md)).
 - `services/guild/server` does not exist. No Java consumer implements the
@@ -258,6 +258,11 @@ Closed gaps (do not reuse the IDs):
 | GAP-12 | 2026-11-14, schema | The membership exclusion covers one account in one clan, so a move seen by B at 12:01 before A's 12:02 departure keeps both boundaries in either ingestion order. `current_observed_clan_member` resolves one current clan by the latest `confirmed_through`; the member list, war-stars board and desired clan roles follow it. `030_coc.sql` checks both orders, same-clan overlap and presence counted once. The collector and SR-CG-03 union remain service work (workstreams 5, 12). |
 | GAP-17 | 2026-11-14, schema | Each dispatch authorization keeps `dispatch_action`, the edit's `requested_message_id` and, for a create after a missing message, `replaced_dispatch_key`; a succeeded edit must return the requested message. `090_notification_delivery.sql` checks edit M → 404 → create N. |
 | GAP-18 | 2026-11-14, documentation | SR-ACC-09 now orders demotion → insert/return new link → append primary history. This fixes the guide's immediate-FK violation; Java still needs its first-link/make-primary test. |
+| GAP-20 | 2026-11-14, schema | Presence found in the gateway member list had no record of its own: a state row needs a membership event, and a departure missed during an outage has no source time. `fact_discord_membership_event.event_source` distinguishes `gateway_event` from `member_list_sync`; a sync join carries `joined_at`, and a sync departure's `occurred_at` is documented as an upper bound (V4; SR-DSC-01/07, SR-AUTH-03; `050_discord.sql`). `guild_settings.welcome_sync_max_age_seconds` bounds the welcome of a sync join (DEC-18). The sync itself is workstream 3. |
+| GAP-21 | 2026-11-14, schema | A Clan Games event could not be moved or corrected: unique start, no overlap and insert-only. `dim_clan_games_event.voided_at` voids a stored event once, `replaces_event_key` on the new manual event names it, the overlap exclusion covers only events that are not voided, and the correlation ID is unique so the schedule does not create that month again (DEC-19; V3, V9; SR-CG-01/02/07/14; `040_clan_games.sql`, `110_runtime_grants.sql`). The reschedule command is workstream 12. |
+| GAP-22 | 2026-11-14, schema | Each league-group fetch stored every registered pool again, kept no row for a failed fetch or the requesting clan, and keyed round references by tag, so the repeated `#0` placeholder collided. `cwl_group_poll` keeps every poll; observations name their `group` poll and are stored on change; round references are keyed by `tag_position` (V6, V9; SR-CWL-04/07/18; `080_cwl_and_custom_events.sql`). The collector is workstream 15. |
+| GAP-23 | 2026-11-14, schema | The reserved bench day was updated in place, so the day that an earlier plan kept free was lost. `fact_cwl_bench_assignment_revision` keeps every reservation, move and release; `current_cwl_bench_assignment` shows the latest (V6, V9; SR-CWL-09/16; `080_cwl_and_custom_events.sql`). Writing revisions is workstream 15. |
+| GAP-24 | 2026-11-14, schema | A CWL cycle was one per month with a generated signup close, so a moved CWL or a second CWL of a month could not be planned. `cwl_cycle.month_sequence` allows further cycles; `fact_cwl_cycle_schedule_revision` keeps each signup close with actor, reason and operation, and `current_cwl_cycle` shows the latest; a leadership prompt names one schedule revision, and `schedule_changed` records a superseded prompt; a partial unique index allows one open cycle at a time (DEC-20, DEC-21; V6, V7, V9; SR-CWL-01/19, SR-NTF-14/15; `080_cwl_and_custom_events.sql`, `090_notification_delivery.sql`). The commands are workstream 15. |
 
 ## Decisions for the project owner
 
@@ -271,8 +276,9 @@ table with its date and outcome.
 
 ### Resolved decisions
 
-The owner answered DEC-01 to DEC-17 on 2026-11-14. Each outcome is recorded
-in the named requirement and rule.
+The owner answered DEC-01 to DEC-17 on 2026-11-14, decided DEC-19 and
+DEC-20 with the schema review of the same day, and answered DEC-18 and
+DEC-21 on 2026-11-15. Each outcome is recorded in the named requirement and rule.
 
 | ID | Outcome | Recorded in |
 | --- | --- | --- |
@@ -293,6 +299,10 @@ in the named requirement and rule.
 | DEC-15 | A bench is served only with confirmed registration; unknown registration only reserves a provisional day. | CWL-013; SR-CWL-09/16 |
 | DEC-16 | Each public Clan Games points revision freezes explicit per-account progress rows. Schema: `notification_clan_games_report_progress`. | CG-020; SR-NTF-13; V7, V9, `090_notification_delivery.sql` |
 | DEC-17 | The latest accepted join governs New Joinee; retained eligible links onboard at rejoin with New Joinee to rejoin plus 7 days; a first link after join plus 7 days gets no New Joinee. | MEM-012; SR-DSC-06 |
+| DEC-18 | A join that the member list sync finds sends the MEM-010 welcome only when the member joined within the welcome window before the sync. The window is a guild setting; the review proposed the default of one day (86,400 seconds) and the owner did not change it. An older join gets no welcome; Applicants and onboarding are not affected. Schema: `guild_settings.welcome_sync_max_age_seconds`. | MEM-010; SR-DSC-07, SR-CFG-02; V4, V9, `050_discord.sql` |
+| DEC-19 | The game has moved Clan Games, so an event can be rescheduled. The stored event is voided, not edited or cancelled, and a manual event that names it takes the new dates; the voided event keeps its evidence and collects and assesses nothing more. Schema: `voided_at`, `replaces_event_key`, partial overlap exclusion, unique correlation ID. Closed GAP-21. Proposed by the review and not changed by the owner: a configuration actor reschedules with a reason, and the schedule does not create that month again. | CG-001; SR-CG-14; V3, V9, `040_clan_games.sql` |
+| DEC-20 | The game has moved CWL and has run two CWLs in one month. Staff can reschedule the signups of a cycle, and a month can have a further cycle. Schema: `month_sequence`, `fact_cwl_cycle_schedule_revision`, prompt per schedule revision. Closed GAP-24; the details are DEC-21. | CWL-003, CWL-018; SR-CWL-01/19, SR-NTF-15; V6, V7, V9 |
+| DEC-21 | Rescheduling CWL: (1) Leadership, Co-leader or Admin reschedule a cycle or create a further cycle; (2) a later close reopens signups that had already closed, until the first War Day of the cycle freezes, and the earlier plans stay as history; (3) the new schedule always prompts leadership again, at once when its due time has passed; (4) cycles never overlap: the first cycle ends before a further one is created. Schema: partial unique index for one open cycle. | CWL-018; SR-CWL-01/18/19, SR-NTF-15; V6, `080_cwl_and_custom_events.sql` |
 
 Follow-up to DEC-05 (2026-11-14): a war reminder or catch-up with no unused
 attack left at send time is not sent; it is expired with a `no_unused_attacks`
@@ -332,7 +342,7 @@ authoritative even where no historical SQL rule exists.
 | --- | --- | --- | --- |
 | 1 | Service skeleton, blocking jOOQ boundary, clock, locks and independent database-test task; transaction/restart foundations of NOTIFY-003/004 | SR-CTX, SR-TEST | none |
 | 2 | Identities, configuration commands and change history; CFG requirements and configuration acceptance scenarios | SR-CFG, SR-AUTH | 1 |
-| 3 | Discord presence/held roles and current permission evidence; CFG-003–005/009–011, MEM-016 | SR-DSC-01–05, SR-AUTH | 2 |
+| 3 | Discord presence/held roles, the member list sync and current permission evidence; CFG-003–005/009–011, MEM-016 | SR-DSC-01–05/07, SR-AUTH | 2 |
 | 4 | Atomic operation intent, typed source context and mentions; NOTIFY-003/004/014 | SR-NTF-01/02 | 2 |
 | 5 | Member-list collector, observed periods, storage-on-change and seasons; MEM-001–005, CFG-006 | SR-MEM | 2 |
 | 6 | Verification, links, attribution, primary and transfers; LINK requirements and acceptance scenarios | SR-ACC | 3, 5; test the GAP-18 ordering correction |

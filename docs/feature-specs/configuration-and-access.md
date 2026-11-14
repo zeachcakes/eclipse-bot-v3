@@ -56,7 +56,10 @@ the configured Admin-role rule.
   grants authority only while the member has confirmed present Discord state;
   unknown presence fails closed (DEC-06, 2026-11-14). The Discord collector
   records presence from the gateway member list at startup and after a
-  reconnect, so existing staff need no join event.
+  reconnect, so existing staff need no gateway join event. A join or
+  departure that the collector finds this way is marked as found by the
+  member list; such a departure has no known time, only a latest possible
+  one.
 - **CFG-011:** Preserve the separate visibility of developer-only configuration
   audits, leadership-only assessments, and private link history. A general audit
   viewer or log channel must not bypass those boundaries.
@@ -78,6 +81,7 @@ the configured Admin-role rule.
 | Configuration audit access | Developer allowlist entry |
 | Account-transfer approval and link-history access | Co-leader or Admin |
 | CWL late sign-ups, availability changes, manual lineups, and bench overrides | Co-leader or Admin |
+| CWL signup reschedule and a further cycle in a month | Leadership, Co-leader, or Admin |
 | Warning issue/revoke | Leadership, Co-leader, or Admin |
 | Own-account API refresh | Requester's currently linked account |
 | Own warning history | Warning subject |

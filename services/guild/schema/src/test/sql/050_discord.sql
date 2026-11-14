@@ -6,7 +6,8 @@ BEGIN;
 DO $$
 DECLARE
     guild bigint; member_id bigint; other_id bigint; role_id bigint; other_role bigint; channel_id bigint;
-    join_event bigint; departure_event bigint; role_event bigint; credited bigint; rejected bigint;
+    join_event bigint; departure_event bigint; sync_join bigint; sync_departure bigint;
+    role_event bigint; credited bigint; rejected bigint;
     award bigint; joined timestamptz := '2026-03-05 12:00+00';
 BEGIN
     INSERT INTO guild.dim_guild (discord_guild_id) VALUES (950000000000000001) RETURNING guild_key INTO guild;
@@ -105,6 +106,60 @@ BEGIN
     VALUES (member_id, true, join_event, joined);
     UPDATE guild.discord_member_state SET is_present = false, last_membership_event_key = departure_event,
         last_event_at = joined + interval '1 day' WHERE user_key = member_id;
+
+    -- DEC-18: a join that the sync finds is welcomed only when it is recent.
+    IF (SELECT welcome_sync_max_age_seconds FROM guild.guild_settings) <> 86400 THEN
+        RAISE EXCEPTION 'The welcome window of a member list join must default to one day';
+    END IF;
+    BEGIN
+        UPDATE guild.guild_settings SET welcome_sync_max_age_seconds = 0;
+        RAISE EXCEPTION 'A welcome window of zero seconds was accepted';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    UPDATE guild.guild_settings SET welcome_sync_max_age_seconds = 3600;
+
+    -- Presence found in the gateway member list (CFG-010): a gateway event is
+    -- the default source, and a sync records the member's joined_at as a join.
+    IF (SELECT event_source FROM guild.fact_discord_membership_event WHERE membership_event_key = join_event)
+        <> 'gateway_event' THEN
+        RAISE EXCEPTION 'A gateway event did not keep its source';
+    END IF;
+    BEGIN
+        INSERT INTO guild.fact_discord_membership_event (user_key, event_kind, event_source, occurred_at,
+            new_joinee_policy_days)
+        VALUES (other_id, 'join', 'guess', joined, 7);
+        RAISE EXCEPTION 'An unknown membership event source was accepted';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.fact_discord_membership_event (user_key, event_kind, event_source, occurred_at)
+        VALUES (other_id, 'join', 'member_list_sync', joined);
+        RAISE EXCEPTION 'A join from the member list was recorded without its New Joinee policy';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    INSERT INTO guild.fact_discord_membership_event (user_key, event_kind, event_source, occurred_at,
+        new_joinee_policy_days, observed_at)
+    VALUES (other_id, 'join', 'member_list_sync', joined - interval '300 days', 7, joined)
+    RETURNING membership_event_key INTO sync_join;
+    INSERT INTO guild.discord_member_state (user_key, is_present, last_membership_event_key, last_event_at)
+    VALUES (other_id, true, sync_join, joined - interval '300 days');
+    IF (SELECT new_joinee_expires_at FROM guild.fact_discord_membership_event
+        WHERE membership_event_key = sync_join) <> joined - interval '293 days' THEN
+        RAISE EXCEPTION 'A member list join did not count New Joinee from the source joined_at';
+    END IF;
+    -- A departure that the sync found has no source time: its occurred_at is
+    -- the sync time, the latest moment at which the member can have left.
+    INSERT INTO guild.fact_discord_membership_event (user_key, event_kind, event_source, occurred_at, observed_at)
+    VALUES (other_id, 'departure', 'member_list_sync', joined + interval '2 days', joined + interval '2 days')
+    RETURNING membership_event_key INTO sync_departure;
+    UPDATE guild.discord_member_state SET is_present = false, last_membership_event_key = sync_departure,
+        last_event_at = joined + interval '2 days' WHERE user_key = other_id;
+    BEGIN
+        UPDATE guild.fact_discord_membership_event SET event_source = 'gateway_event'
+        WHERE membership_event_key = sync_departure;
+        RAISE EXCEPTION 'A membership event changed its source';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
 
     -- Role events and the held-role projection.
     BEGIN

@@ -70,12 +70,13 @@ GRANT SELECT ON
     guild.clan_role_binding, guild.confirmed_moderation_kick, guild.current_account_link,
     guild.current_chat_xp_monthly_leaderboard, guild.current_clan_lifetime_war_stars,
     guild.current_clan_member_state, guild.current_custom_event_signup,
+    guild.current_cwl_bench_assignment, guild.current_cwl_cycle,
     guild.current_cwl_manual_pin, guild.current_cwl_participation, guild.current_cwl_signup,
     guild.current_observed_clan_member,
     guild.custom_event, guild.custom_event_signup, guild.custom_event_war,
-    guild.custom_roster_account, guild.custom_roster_revision, guild.cwl_bench_assignment,
+    guild.custom_roster_account, guild.custom_roster_revision,
     guild.cwl_clan_day, guild.cwl_clan_settings, guild.cwl_cycle, guild.cwl_export_revision,
-    guild.cwl_export_signup_input, guild.cwl_sheet_destination,
+    guild.cwl_export_signup_input, guild.cwl_group_poll, guild.cwl_sheet_destination,
     guild.cwl_participating_clan, guild.cwl_plan_assignment, guild.cwl_plan_day,
     guild.cwl_plan_revision, guild.cwl_replan_request, guild.cwl_round_war_reference,
     guild.cwl_signup, guild.desired_chat_rank_role, guild.desired_clan_member_role,
@@ -89,7 +90,8 @@ GRANT SELECT ON
     guild.fact_clan_games_member_assessment, guild.fact_clan_games_progress,
     guild.fact_clan_member_observation, guild.fact_clan_membership_change,
     guild.fact_configuration_change, guild.fact_custom_event_signup_revision,
-    guild.fact_cwl_bench_incident, guild.fact_cwl_bench_resolution, guild.fact_cwl_day_freeze,
+    guild.fact_cwl_bench_assignment_revision, guild.fact_cwl_bench_incident,
+    guild.fact_cwl_bench_resolution, guild.fact_cwl_cycle_schedule_revision, guild.fact_cwl_day_freeze,
     guild.fact_cwl_export_attempt, guild.fact_cwl_group_observation,
     guild.fact_cwl_manual_pin_revision, guild.fact_cwl_participation_revision,
     guild.fact_cwl_plan_input, guild.fact_cwl_registered_clan, guild.fact_cwl_registered_player,
@@ -131,6 +133,7 @@ TO guild_runtime;
 
 -- Dimensions. Labels and sync columns change; identities do not. The operator
 -- seeds dim_guild. A war becomes custom when staff attach it to a custom event.
+-- A Clan Games event is voided once and never edited.
 GRANT INSERT ON
     guild.dim_achievement, guild.dim_clan, guild.dim_clan_games_event, guild.dim_coc_season,
     guild.dim_discord_channel, guild.dim_discord_role, guild.dim_discord_user,
@@ -143,18 +146,22 @@ GRANT UPDATE (clan_name) ON guild.dim_clan TO guild_runtime;
 GRANT UPDATE (role_name, last_synced_at, deleted_at) ON guild.dim_discord_role TO guild_runtime;
 GRANT UPDATE (channel_name, last_synced_at, deleted_at) ON guild.dim_discord_channel TO guild_runtime;
 GRANT UPDATE (war_kind) ON guild.dim_war TO guild_runtime;
+GRANT UPDATE (voided_at) ON guild.dim_clan_games_event TO guild_runtime;
 
 -- Facts and other append-only records.
 GRANT INSERT ON
     guild.clan_games_counter_read, guild.clan_games_member_account_input,
     guild.clan_games_participation_evidence, guild.clan_membership_poll,
-    guild.custom_roster_account, guild.custom_roster_revision, guild.cwl_plan_assignment,
+    guild.custom_roster_account, guild.custom_roster_revision, guild.cwl_group_poll,
+    guild.cwl_plan_assignment,
     guild.fact_api_fetch_attempt, guild.fact_chat_rank_change, guild.fact_chat_xp_decision,
     guild.fact_clan_games_account_assessment, guild.fact_clan_games_member_assessment,
     guild.fact_clan_games_progress, guild.fact_clan_member_observation,
     guild.fact_clan_membership_change, guild.fact_configuration_change,
-    guild.fact_custom_event_signup_revision, guild.fact_cwl_bench_incident,
-    guild.fact_cwl_bench_resolution, guild.fact_cwl_day_freeze, guild.fact_cwl_export_attempt,
+    guild.fact_custom_event_signup_revision, guild.fact_cwl_bench_assignment_revision,
+    guild.fact_cwl_bench_incident,
+    guild.fact_cwl_bench_resolution, guild.fact_cwl_cycle_schedule_revision,
+    guild.fact_cwl_day_freeze, guild.fact_cwl_export_attempt,
     guild.fact_cwl_group_observation, guild.fact_cwl_manual_pin_revision,
     guild.fact_cwl_participation_revision, guild.fact_cwl_plan_input,
     guild.fact_cwl_registered_clan, guild.fact_cwl_registered_player,
@@ -202,7 +209,7 @@ TO guild_runtime;
 GRANT INSERT ON
     guild.account_transfer_request, guild.activity_command_operation,
     guild.clan_games_read_request, guild.custom_event, guild.custom_event_signup,
-    guild.cwl_bench_assignment, guild.cwl_clan_day, guild.cwl_cycle, guild.cwl_export_revision,
+    guild.cwl_clan_day, guild.cwl_cycle, guild.cwl_export_revision,
     guild.cwl_export_signup_input, guild.cwl_sheet_destination, guild.cwl_participating_clan, guild.cwl_plan_revision, guild.cwl_replan_request,
     guild.cwl_round_war_reference, guild.cwl_signup, guild.moderation_action
 TO guild_runtime;
@@ -212,7 +219,6 @@ GRANT UPDATE (result_key) ON guild.activity_command_operation TO guild_runtime;
 GRANT UPDATE (due_at, collect_from, status, missed_at) ON guild.clan_games_read_request TO guild_runtime;
 GRANT UPDATE (state, war_key, associated_by, association_operation_id, association_reason)
     ON guild.custom_event TO guild_runtime;
-GRANT UPDATE (war_day, assigned_at) ON guild.cwl_bench_assignment TO guild_runtime;
 GRANT UPDATE (war_key) ON guild.cwl_clan_day TO guild_runtime;
 GRANT UPDATE (state, ended_at) ON guild.cwl_cycle TO guild_runtime;
 GRANT UPDATE (sheets_state) ON guild.cwl_export_revision TO guild_runtime;
@@ -261,6 +267,7 @@ GRANT UPDATE (new_joinee_days, updated_at, verification_max_age_seconds,
         clan_games_enabled, clan_games_start_day, clan_games_start_time_utc,
         clan_games_event_seconds, clan_games_account_points_cap, clan_games_refresh_seconds,
         clan_games_checkpoint_tolerance_seconds, kick_max_attempts, kick_retry_seconds,
+        welcome_sync_max_age_seconds,
         leaderboard_next_policy_key, leaderboard_next_timezone_name, leaderboard_policy_selected_at)
     ON guild.guild_settings TO guild_runtime;
 GRANT UPDATE (enabled, membership_poll_seconds, war_poll_seconds, player_profile_seconds,

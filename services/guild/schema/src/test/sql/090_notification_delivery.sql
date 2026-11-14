@@ -6,6 +6,8 @@ BEGIN;
 DO $$
 DECLARE
     member_id bigint; role_id bigint; channel_id bigint; clan_a bigint; clan_b bigint; war bigint; cycle bigint;
+    other_cycle bigint; schedule_one bigint; schedule_two bigint; other_schedule bigint; second_prompt uuid;
+    op_reschedule uuid := gen_random_uuid();
     participation bigint; plan bigint; report uuid; ping uuid; reminder uuid; catchup uuid; role_work uuid;
     revision_one uuid; prompt uuid; dispatch uuid; fence uuid := gen_random_uuid();
     raid bigint; raid_report uuid; raid_revision uuid; event_a bigint; event_b bigint; raid_start uuid;
@@ -529,7 +531,12 @@ BEGIN
     EXCEPTION WHEN insufficient_privilege THEN NULL;
     END;
 
-    -- CWL notification context.
+    -- CWL notification context. Only one cycle is open at a time, so the other
+    -- cycle has ended before this one is created.
+    INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-11-01') RETURNING cycle_key INTO other_cycle;
+    INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at)
+    VALUES (other_cycle, 1, '2026-11-01 00:00+00') RETURNING schedule_revision_key INTO other_schedule;
+    UPDATE guild.cwl_cycle SET state = 'ended', ended_at = '2026-11-12 00:00+00' WHERE cycle_key = other_cycle;
     INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-12-01') RETURNING cycle_key INTO cycle;
     INSERT INTO guild.cwl_participating_clan (cycle_key, clan_key)
     VALUES (cycle, clan_a) RETURNING participation_key INTO participation;
@@ -539,17 +546,63 @@ BEGIN
         audience, due_at)
     VALUES ('cwl:leadership:1', 'ping', 'cwl_leadership', channel_id, 'leadership', now_at)
     RETURNING operation_key INTO prompt;
+    INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at)
+    VALUES (cycle, 1, '2026-12-01 00:00+00') RETURNING schedule_revision_key INTO schedule_one;
     BEGIN
         INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, participation_key)
         VALUES (prompt, cycle, participation);
         RAISE EXCEPTION 'A CWL context named a clan without its plan and War Day';
     EXCEPTION WHEN check_violation THEN NULL;
     END;
-    INSERT INTO guild.notification_cwl_context (operation_key, cycle_key) VALUES (prompt, cycle);
     BEGIN
-        INSERT INTO guild.notification_cwl_context (operation_key, cycle_key) VALUES (catchup, cycle);
-        RAISE EXCEPTION 'A cycle got two leadership prompts';
+        INSERT INTO guild.notification_cwl_context (operation_key, cycle_key) VALUES (prompt, cycle);
+        RAISE EXCEPTION 'A leadership prompt named no schedule revision';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, schedule_revision_key)
+        VALUES (prompt, cycle, other_schedule);
+        RAISE EXCEPTION 'A leadership prompt named the schedule of another cycle';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, schedule_revision_key)
+    VALUES (prompt, cycle, schedule_one);
+    BEGIN
+        INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, schedule_revision_key)
+        VALUES (catchup, cycle, schedule_one);
+        RAISE EXCEPTION 'One schedule of a cycle got two leadership prompts';
     EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    -- CWL-018: a reschedule before the prompt was attempted supersedes it, and
+    -- the new schedule revision gets its own prompt.
+    INSERT INTO guild.activity_command_operation (operation_id, actor_user_key, action, arguments)
+    VALUES (op_reschedule, member_id, 'cwl_reschedule', '{}');
+    INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at,
+        actor_user_key, reason, operation_id)
+    VALUES (cycle, 2, '2026-12-03 00:00+00', member_id, 'The game moved CWL', op_reschedule)
+    RETURNING schedule_revision_key INTO schedule_two;
+    INSERT INTO guild.notification_operation (logical_key, operation_kind, notification_kind, channel_key,
+        audience, due_at)
+    VALUES ('cwl:leadership:1:schedule:2', 'ping', 'cwl_leadership', channel_id, 'leadership', now_at)
+    RETURNING operation_key INTO second_prompt;
+    INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, schedule_revision_key)
+    VALUES (second_prompt, cycle, schedule_two);
+    UPDATE guild.notification_operation SET status = 'superseded' WHERE operation_key = prompt;
+    BEGIN
+        INSERT INTO guild.fact_notification_disposition (operation_key, disposition, cause, occurred_at)
+        VALUES (prompt, 'expired', 'schedule_changed', now_at);
+        RAISE EXCEPTION 'A rescheduled prompt was recorded as expired';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    INSERT INTO guild.fact_notification_disposition (operation_key, disposition, cause,
+        superseded_by_operation_key, occurred_at)
+    VALUES (prompt, 'superseded', 'schedule_changed', second_prompt, now_at);
+    BEGIN
+        INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, schedule_revision_key,
+            participation_key, plan_key, war_day)
+        VALUES (revision_one, cycle, schedule_two, participation, plan, 1);
+        RAISE EXCEPTION 'A roster operation named a schedule revision';
+    EXCEPTION WHEN check_violation THEN NULL;
     END;
     INSERT INTO guild.notification_cwl_context (operation_key, cycle_key, participation_key, plan_key, war_day)
     VALUES (revision_one, cycle, participation, plan, 1);
