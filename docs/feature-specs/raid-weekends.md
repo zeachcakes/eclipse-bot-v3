@@ -17,11 +17,11 @@ authorized configuration operators, and automatic collection/report workers.
 | --- | --- |
 | RAID-001 | Announce Raid Weekend start with separate clan-member-role pings for each tracked clan. Preserve each clan's role identity rather than substituting one combined role. |
 | RAID-002 | Publish capital gold looted per Clash account. Do not combine alts into one Discord-member total. |
-| RAID-003 | Refresh the account report every eight hours. Preserve the observation time and collection outcome so an old report is not represented as freshly verified. |
+| RAID-003 | Refresh the account report every eight hours. Preserve the observation time and collection outcome so an old report is not represented as freshly verified. Raid state is collected every 900 seconds during a weekend by default, a configurable per-clan setting separate from the report cadence (DEC-04, 2026-11-14). |
 | RAID-004 | Initially use the same shared activity channel as Clan Games, while retaining an independently configurable Raid Weekend channel binding. |
 | RAID-005 | Use raid-member `capitalResourcesLooted` as the measure. The player-profile `clanCapitalContributions` donation counter is a different measure. |
 | RAID-006 | Treat repeated observations as snapshots of a running total. Select the relevant latest account/weekend observation; do not sum successive snapshots or merge linked accounts. |
-| RAID-007 | Retain source identity and history independently of later account links or clan departures. A failed or missing fetch must not become zero gold. |
+| RAID-007 | Retain source identity and history independently of later account links or clan departures. A failed or missing fetch must not become zero gold. Every raid collection is kept with its outcome, so a report shows the time of its latest successful collection; an account in the clan but missing from a successful weekend's member list looted zero. |
 | RAID-008 | Record announcement/report delivery outcomes independently of the collection outcome. An attempted Discord update is not confirmed delivery. |
 
 ## Evidence and logical data grains

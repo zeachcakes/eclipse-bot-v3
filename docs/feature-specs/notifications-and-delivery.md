@@ -52,7 +52,10 @@ game-data collection, or a general-purpose moderation executor.
 - **NOTIFY-011:** Previously attempted, failed, or uncertain pings must not be
   relabeled as never-attempted catch-up work. Expired reminders for ended wars
   must not produce an old ping. Repeated recovery processing must not recreate
-  the same catch-up operation.
+  the same catch-up operation. Each separate outage may produce its own catch-up
+  for the never-attempted checkpoints it missed (DEC-14, 2026-11-14): one
+  pending catch-up per war and clan at a time, and each missed checkpoint feeds
+  at most one catch-up.
 - **NOTIFY-012:** Role reconciliation evaluates the latest desired state before
   acting. A stale queued change must not restore a role that newer evidence no
   longer requires. The one-attempt ping rule does not prohibit safe, repeated
@@ -184,8 +187,6 @@ choosing precise contracts, and implementing the runtime are separate work.
 - Exact topic/envelope versions, protobuf methods, partition keys, acknowledgments,
   retention, and the cross-process single-send authorization protocol.
 - Report creation/edit retry rules and message replacement if a report is deleted.
-- How multiple distinct outages within one war affect catch-up identity beyond
-  the agreed coalescing and no-repeat rules.
 - Manual resend/replay permissions and behavior; no manual override is authorized
   by the automatic retry policy itself.
 - Which unattempted work can safely retry after transport failure before any

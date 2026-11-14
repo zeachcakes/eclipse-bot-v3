@@ -20,13 +20,13 @@ earning decisions and reconciles rank roles. These permissions follow
 
 | ID | Requirement |
 | --- | --- |
-| XP-001 | All text channels are in scope. A member qualifies to earn when they hold at least one configured XP-eligibility role. Initially two roles are configured; either role or both roles qualify. A linked CoC account is not required. |
+| XP-001 | All text channels are in scope. A member qualifies to earn when they hold at least one configured XP-eligibility role. Initially two roles are configured: Eclipse, granted after the first verified eligible account link, and Friends. Either role or both qualify; Applicants or New Joinee alone does not. A linked CoC account is not required when the member holds Friends (owner clarification, 2026-11-14). |
 | XP-002 | Each credited message earns a uniformly sampled integer from 15 through 25, inclusive, using unpredictable server-side randomness. Store the sampled amount as part of that message's award. |
 | XP-003 | A member can earn from at most five messages in a rolling 60-second window across all text channels combined. |
 | XP-004 | A message can produce at most one award. If already credited, retrying or redelivering it returns the existing award and amount; it must not reroll XP, add XP again, or consume another earning slot. Concurrent processing must preserve this rule and XP-003. |
 | XP-005 | Losing all configured eligibility roles pauses earning. Existing XP and achieved rank remain. Regaining either role restores earning eligibility. |
 | XP-006 | Leaving and rejoining Discord preserves the member's XP and achieved rank. Departure changes current membership and leaderboard eligibility without deleting earning history. |
-| XP-007 | Rank is determined by cumulative XP using the approved thresholds below. Monthly leaderboard boundaries do not reset cumulative XP or rank. |
+| XP-007 | Rank is determined by cumulative XP using the approved thresholds below. Monthly leaderboard boundaries do not reset cumulative XP or rank. A member has no rank and no rank role until their first credited message; that award gives them Stardust or the rank its XP reaches (DEC-13, 2026-11-14). |
 | XP-008 | When applying rank roles, assign only the member's highest achieved rank's configured Discord role. Reconciliation removes lower rank roles without removing unrelated roles. Role bindings use stable Discord IDs; names are display labels. |
 | XP-009 | XP earning eligibility and leaderboard eligibility are separate. Monthly and all-time chat boards follow the membership and calendar rules in the leaderboard specification. |
 | XP-010 | Keep evidence sufficient to explain an award, the resulting total/rank, and each requested or confirmed rank-role change. A requested Discord role change is not evidence that Discord applied it. |
@@ -78,6 +78,8 @@ specification; rank and score publication follows the leaderboard specification.
 | --- | --- |
 | Member has the first eligibility role only, the second only, or both | Each case qualifies for earning. Neither role means earning is paused. |
 | Eligible member has no linked CoC account | Their chat messages can earn XP under the same rules. |
+| A new joinee holds only Applicants or New Joinee | Their messages do not earn until they hold Eclipse or Friends. |
+| An eligible member has never had a credited message | They have no rank and no rank role; their first credited message sets Stardust. |
 | A message earns 19 XP and is delivered again | The existing 19 XP award is returned; the total and earning-slot count do not increase again. |
 | Five messages earn across several channels and a sixth arrives while all five remain within the rolling window | The sixth message does not earn. Changing channels does not bypass the limit. |
 | Five messages earn shortly before a calendar-minute boundary and another arrives shortly after it | Crossing the calendar-minute boundary does not create new earning capacity. |

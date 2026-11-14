@@ -55,16 +55,25 @@ jobs:
         run: |
           postgres_password="$(openssl rand -hex 16)"
           catalog_password="$(openssl rand -hex 16)"
+          guild_password="$(openssl rand -hex 16)"
+          guild_app_password="$(openssl rand -hex 16)"
           echo "::add-mask::$postgres_password"
           echo "::add-mask::$catalog_password"
+          echo "::add-mask::$guild_password"
+          echo "::add-mask::$guild_app_password"
           printf 'POSTGRES_USER=eclipse\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=eclipse_bot\n' "$postgres_password" >.env
           {
             echo "CATALOG_DB_URL=jdbc:postgresql://localhost:5432/eclipse_bot"
             echo "CATALOG_DB_USER=catalog_migration"
             echo "CATALOG_DB_PASSWORD=$catalog_password"
+            echo "GUILD_DB_URL=jdbc:postgresql://localhost:5432/eclipse_bot"
+            echo "GUILD_DB_USER=guild_migration"
+            echo "GUILD_DB_PASSWORD=$guild_password"
+            echo "GUILD_APP_DB_USER=guild_application"
+            echo "GUILD_APP_DB_PASSWORD=$guild_app_password"
           } >>"$GITHUB_ENV"
           docker compose up --detach --wait
-      # ADR 0007: the schema and its migration role exist before Flyway runs. No test connects, so no application role.
+      # ADR 0007: schemas and their migration roles exist before Flyway runs.
       - name: Create the catalog schema
         run: |
           docker compose exec -T -e CATALOG_DB_PASSWORD postgres \
@@ -73,8 +82,39 @@ jobs:
           CREATE ROLE catalog_migration LOGIN PASSWORD :'password';
           CREATE SCHEMA catalog AUTHORIZATION catalog_migration;
           SQL
+      - name: Bootstrap the guild schema and roles
+        run: |
+          docker compose exec -T \
+            -e GUILD_DB_USER -e GUILD_DB_PASSWORD \
+            -e GUILD_APP_DB_USER -e GUILD_APP_DB_PASSWORD postgres \
+            psql --set ON_ERROR_STOP=1 --username eclipse --dbname eclipse_bot \
+            <tools/postgres/bootstrap-guild.sql
       - name: Migrate and generate jOOQ sources
-        run: mise run --skip-tools catalog:prepare
+        run: |
+          mise run --skip-tools catalog:prepare
+          mise run --skip-tools guild:prepare
+      - name: Check guild SQL constraints and grants
+        run: mise run --skip-tools guild:test
+      # After the checks, which need a database without guild data. The second
+      # run proves that seeding again changes nothing.
+      - name: Seed the guild row and the first developer twice
+        env:
+          DISCORD_GUILD_ID: "100000000000000001"
+          GUILD_FIRST_DEVELOPER_ID: "100000000000000002"
+        run: |
+          for _ in 1 2; do
+            docker compose exec -T -e DISCORD_GUILD_ID -e GUILD_FIRST_DEVELOPER_ID postgres \
+              psql --set ON_ERROR_STOP=1 --username eclipse --dbname eclipse_bot \
+              <tools/postgres/seed-guild.sql
+          done
+      # The diagrams are generated from the migrated catalog, so a migration
+      # change without a regenerated page fails here.
+      - name: Check the guild ER diagrams are current
+        run: |
+          python3 tools/postgres/generate-guild-erd.py \
+            --container "$(docker compose ps --quiet postgres)" \
+            --database eclipse_bot --user "$GUILD_DB_USER"
+          git diff --exit-code -- docs/design/guild-er-diagram.md
       - name: Build and test
         run: mise run --skip-tools java:build
       - name: Check the convention plugins

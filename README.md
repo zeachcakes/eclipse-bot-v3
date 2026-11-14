@@ -22,6 +22,7 @@ will be added to the Java backend.
 | --- | --- |
 | [services/discord](services/discord) | Discord interaction service |
 | [services/catalog](services/catalog) | Example Java service with `schema` (migrations and generated jOOQ model) and `server` modules |
+| [services/guild/schema](services/guild/schema) | Guild persistence: CoC and Discord star-schema SQL migrations, configuration, and SQL regression checks; [design](docs/design/guild-star-schema.md) and [ER diagrams](docs/design/guild-er-diagram.md) |
 | [libraries](libraries) | Shared code |
 | [tools/gradle](tools/gradle) | Gradle convention plugins |
 | [docs/development.md](docs/development.md) | Shared development guide |

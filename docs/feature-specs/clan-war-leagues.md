@@ -21,7 +21,7 @@ does not confer the Co-leader/Admin actions described here.
 
 | ID | Agreed requirement |
 | --- | --- |
-| CWL-001 | Notify leadership one week before CWL starts so they can select eligible tracked clans before account signups open. Keep each participating clan's signup and plan distinct. |
+| CWL-001 | Notify leadership one week before CWL starts so they can select eligible tracked clans before account signups open. Keep each participating clan's signup and plan distinct. Staff cannot withdraw a participating clan while any active signup targets it; they move or withdraw those signups first, so no signup loses its target silently (DEC-12, 2026-11-14). |
 | CWL-002 | Record signups per Clash account and target clan. The target may differ from the account's current clan. Availability selects War Days 1 through 7, rather than calendar dates; selected availability is a strict planning constraint. |
 | CWL-003 | Close normal signups at 00:00 GMT on the first day of the month. Immediately generate a provisional seven-day plan, before in-game registration is available. |
 | CWL-004 | Co-leader/Admin staff may add late signups and edit availability after the deadline. Members cannot edit their own availability after close for now; that restriction can be reviewed later. |
@@ -33,10 +33,10 @@ does not confer the Co-leader/Admin actions described here.
 | CWL-010 | Freeze automatic lineup changes 60 minutes before that battle starts, with a configurable per-clan cutoff. Use the actual battle start timestamp when known, not an assumed daily cadence. This is an automatic-change cutoff, not a prohibition on authorized staff manual replacements. |
 | CWL-011 | Staff manual replacements are pinned, including authorized manual changes after the automatic cutoff. Regenerate future unfrozen lineups around those selections; automatic regeneration must not silently overwrite a pin or change a frozen lineup. |
 | CWL-012 | A recorded zero- or one-star hit, or an unused attack confirmed after the war ends, mandates a one-war bench at the earliest still-changeable, available, otherwise eligible war. Unknown or incomplete evidence is not a missed attack. |
-| CWL-013 | An unavailable day does not consume the bench. After serving one otherwise eligible available war, the account automatically regains eligibility; it is not guaranteed a lineup slot. An unserved bench expires at season end. |
+| CWL-013 | An unavailable day does not consume the bench. After serving one otherwise eligible available war, the account automatically regains eligibility; it is not guaranteed a lineup slot. An unserved bench expires at season end. A war counts as served only when confirmed registration shows the account in the clan's registered pool for that war and the war's complete final roster excludes it (DEC-15, 2026-11-14). Unknown registration can reserve a provisional bench day but never serves it. |
 | CWL-014 | Co-leader/Admin staff can explicitly override a bench. Record the override separately from a pin so a manual selection does not silently imply a different penalty policy. |
 | CWL-015 | Automatic responses to late results affect the earliest suitable unfrozen future war. Do not automatically rewrite a frozen lineup, rewrite past participation, or carry an unserved penalty into another season. |
-| CWL-016 | Export signups and planned lineups as CSV and automatically synchronize Google Sheets when signups or lineups change. Preserve the distinction between database records, exported copies, and the actual in-game roster. |
+| CWL-016 | Export signups and planned lineups as CSV and automatically synchronize Google Sheets when signups or lineups change. Preserve the distinction between database records, exported copies, and the actual in-game roster. Each export keeps the exact signup or plan revisions it lists and the Sheet it targeted; a Sheet never shows an older export after a newer one. A clan's configured CWL signups channel shows its current signup list as one Discord message, edited when signups change (owner decision, 2026-11-14). |
 | CWL-017 | Preserve signups, edits, plan versions, staff selections, freezes, performance evidence, bench decisions/service/overrides, and export outcomes so a historical lineup remains explainable. |
 
 These constraints can make a complete lineup infeasible. Show missing slots or
@@ -44,6 +44,9 @@ unverified eligibility rather than claiming a complete valid plan. In particular
 strict availability must not be silently ignored and a bench must not be silently
 waived to make a result look feasible. Staff can use the authorized actions above
 to resolve the underlying conflict.
+
+The CWL group is read every 900 seconds and each round war every 120 seconds by
+default, both configurable per clan (DEC-04, 2026-11-14).
 
 ## Evidence and logical data grains
 
@@ -134,6 +137,12 @@ Do not store API credentials in observations or audit details.
 11. The automatic cutoff passes. An automatic replan cannot change that lineup;
     an authorized staff manual replacement can, with its actor and pinned
     selection retained. This does not imply the game still permits the change.
+12. A bench day is reserved while registration is unknown, and that day's final
+    roster excludes the account. The incident stays open until a war with
+    confirmed registration serves it, or it expires at season end.
+13. Staff try to withdraw Clan B while 12 active signups target it. The command
+    is refused; after staff move or withdraw those signups, the withdrawal
+    succeeds.
 
 ## Dependencies
 

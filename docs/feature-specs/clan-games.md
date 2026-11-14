@@ -32,7 +32,9 @@ not overriding earned points.
   is separate from membership polling.
 - **CG-005 — Boundary reads.** Event baselines, the T−24h checkpoint, the final checkpoint,
   and transfer-boundary reads are separate scheduled needs. They must not simply wait
-  for the next regular 15-minute poll.
+  for the next regular 15-minute poll. The T−24h read may be collected up to 1,800
+  seconds before its checkpoint, a configurable default (DEC-03, 2026-11-14); progress
+  in that stretch counts at the final checkpoint.
 - **CG-006 — Points source.** Use supported observations of the Games Champion cumulative
   achievement counter to derive eligible event progress. Keep its achievement milestone
   target separate from the configured event cap.
@@ -54,7 +56,8 @@ not overriding earned points.
 - **CG-013 — Attribution.** Apply first-ever-link backfill and same-profile continuity,
   including an unlinked gap with no intervening different owner. A different-owner
   transfer starts fresh and splits earned points and the requirement at its effective
-  boundary.
+  boundary. A self-unlinked account keeps counting toward its former owner's target and
+  points until a different owner links it (DEC-01, 2026-11-14).
 - **CG-014 — Transfer gate.** A mid-event transfer waits for a successful points refresh
   before becoming effective. Record approval and waiting separately from the effective
   ownership change. Do not time-prorate earned points to fill a missing boundary.
@@ -74,6 +77,9 @@ not overriding earned points.
 - **CG-020 — Retention and audit.** Retain source evidence and assessment history
   indefinitely. Record rule inputs, evidence, calculation versions, inference status,
   retries, and later supported recalculations without silently replacing old results.
+  Each revision of a public points report records, for every account it shows, the
+  exact points observation it published (DEC-16, 2026-11-14), so an old revision can
+  be rendered again without newer progress.
 
 ## Calculation rules
 
@@ -197,7 +203,8 @@ These are planning workstreams, not created GitHub issues:
 
 ## Open and deferred points
 
-- Retry/backoff limits, checkpoint recovery windows, and acceptable source freshness.
+- Retry/backoff limits, recovery after a missed checkpoint window (the T−24h early
+  window is decided under CG-005), and acceptable source freshness.
 - Handling counter regressions or corrections without inventing negative points.
 - Evidence for accounts first observed after event start or whose participating clan
   cannot satisfy the accepted inference rule.

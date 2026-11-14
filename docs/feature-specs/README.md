@@ -6,8 +6,10 @@ feature-sized specifications for future GitHub issues and the next star-schema
 revision.
 
 The specifications describe target behavior. They do not claim that any SQL
-migrations or running services implement every requirement. Live service
-implementation and GitHub issue creation remain separate work.
+migrations or running services implement every requirement. The
+[guild star-schema design](../design/guild-star-schema.md) maps the requirements
+to implemented persistence and database invariants. Live service implementation
+and GitHub issue creation remain separate work.
 
 ## Feature catalog
 
@@ -42,9 +44,12 @@ features, not a verified contract for every live API response.
   or additional approved product rules.
 - Open decisions and deferred scope remain explicitly identified. A proposed
   implementation default must not become an accepted requirement silently.
-- For resolved requirements, use these specifications over conflicting or
-  still-provisional statements in the older
-  [star-schema working plan](../design/star-schema-working-plan.md).
+- These specifications replaced the requirements draft that the
+  [star-schema working plan](../design/star-schema-working-plan.md) held
+  until 14 November 2026. Where a specification says that it supersedes or
+  extends "the working plan", it means that draft; the plan's History
+  section says how to read it. The plan now lists the schema gaps, the open
+  decisions and the order of the service work.
 
 ## Cross-feature invariants
 
@@ -90,6 +95,11 @@ After reviewing the requirements:
     [notification specification](notifications-and-delivery.md) includes proposed
     parent-issue and sub-issue workstreams.
 
+The [schema guide](../../services/guild/schema/README.md) and
+[ER diagrams](../design/guild-er-diagram.md) describe the persistence
+implementation. Runtime workers and external delivery remain separate from
+creating and validating database objects.
+
 ## Deliberately open boundaries
 
 - Detailed Raid Weekend attacks and districts are deferred.
@@ -98,7 +108,8 @@ After reviewing the requirements:
   can be revisited later.
 - Exact CWL rating weights and optimizer implementation, production Kafka
   operations, and live API cache/reset behavior need design or validation.
-- Onboarding edge cases, regular-war mention composition, and metric-specific
-  monthly calculations retain explicit open decisions in their feature specs.
+- Metric-specific monthly calculations retain explicit open decisions in their
+  feature specs. Onboarding after a rejoin or a late first link and war-reminder
+  mentions were decided on 2026-11-14 (MEM-012, regular wars).
 - A later API read cannot guarantee recovery of a missing historical baseline,
   checkpoint, or transfer boundary. Preserve evidence limitations.
