@@ -12,13 +12,49 @@ CREATE TABLE guild.activity_command_operation (
 );
 CREATE TABLE guild.cwl_cycle (
     cycle_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    calendar_month date NOT NULL UNIQUE CHECK (extract(day FROM calendar_month) = 1),
-    signup_closes_at timestamptz GENERATED ALWAYS AS
-        (calendar_month::timestamp AT TIME ZONE 'UTC') STORED,
+    calendar_month date NOT NULL CHECK (extract(day FROM calendar_month) = 1),
+    month_sequence smallint NOT NULL DEFAULT 1 CHECK (month_sequence > 0),
     state text NOT NULL DEFAULT 'signups' CHECK (state IN ('signups', 'planning', 'ended')),
     ended_at timestamptz,
+    UNIQUE (calendar_month, month_sequence),
     CHECK ((state = 'ended') = (ended_at IS NOT NULL))
 );
+COMMENT ON TABLE guild.cwl_cycle IS
+    'One CWL that the bot plans. The scheduler creates the first cycle of each month. A month '
+    'in which the game runs a second CWL gets a further cycle with the next month_sequence '
+    '(CWL-018). When signups close is a revision in fact_cwl_cycle_schedule_revision.';
+-- Only one cycle is open at a time (CWL-018): a cycle ends before the next one
+-- is created, so a collected league group or war belongs to the one open cycle.
+CREATE UNIQUE INDEX cwl_cycle_one_open ON guild.cwl_cycle ((true)) WHERE state <> 'ended';
+-- When the signups of a cycle close. The first revision is written with the
+-- cycle: 00:00 UTC on the first day of its month for a scheduled cycle
+-- (CWL-003), without an actor. Staff reschedule the close with a further
+-- revision, and create a further cycle of a month with its first revision;
+-- both name their actor, reason and operation (CWL-018, CWL-017).
+CREATE TABLE guild.fact_cwl_cycle_schedule_revision (
+    schedule_revision_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    cycle_key bigint NOT NULL REFERENCES guild.cwl_cycle,
+    revision integer NOT NULL CHECK (revision > 0),
+    signup_closes_at timestamptz NOT NULL,
+    actor_user_key bigint REFERENCES guild.dim_discord_user,
+    reason text CHECK (btrim(reason) <> ''),
+    operation_id uuid UNIQUE REFERENCES guild.activity_command_operation,
+    recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    UNIQUE (cycle_key, revision),
+    UNIQUE (schedule_revision_key, cycle_key),
+    CHECK (revision = 1 OR actor_user_key IS NOT NULL),
+    CHECK ((actor_user_key IS NULL) = (reason IS NULL)),
+    CHECK ((actor_user_key IS NULL) = (operation_id IS NULL))
+);
+CREATE VIEW guild.current_cwl_cycle AS
+SELECT DISTINCT ON (c.cycle_key) c.cycle_key, c.calendar_month, c.month_sequence, c.state, c.ended_at,
+    r.signup_closes_at, r.schedule_revision_key, r.revision AS schedule_revision
+FROM guild.cwl_cycle c
+JOIN guild.fact_cwl_cycle_schedule_revision r USING (cycle_key)
+ORDER BY c.cycle_key, r.revision DESC;
+COMMENT ON VIEW guild.current_cwl_cycle IS
+    'Each cycle with the latest revision of its signup close. Every rule that asks whether '
+    'signups have closed uses this time. A cycle without a revision has no schedule yet.';
 CREATE VIEW guild.cwl_clan_settings AS
 SELECT clan_key, automatic_freeze_minutes, sheet_document_id
 FROM guild.clan_collection_settings;
@@ -83,17 +119,50 @@ CREATE TABLE guild.fact_cwl_day_freeze (
 );
 COMMENT ON COLUMN guild.fact_cwl_day_freeze.frozen_at IS
     'When the freeze took effect: the actual start of the war minus automatic_freeze_minutes.';
-CREATE TABLE guild.fact_cwl_group_observation (
-    group_observation_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+-- Every league-group poll of a tracked clan in a cycle has one row, which
+-- proves that the poll ran, whatever it returned. The group, its registered
+-- pools and its round references below are stored only when they differ from
+-- the latest stored observation of the same cycle and clan (CWL-009, CWL-017);
+-- the observation names the poll that saw it.
+CREATE TABLE guild.cwl_group_poll (
+    cwl_group_poll_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     cycle_key bigint NOT NULL REFERENCES guild.cwl_cycle,
-    source_season text NOT NULL CHECK (btrim(source_season) <> ''),
-    source_state text NOT NULL,
+    clan_key bigint NOT NULL REFERENCES guild.clan_collection_settings,
+    source_correlation_id text NOT NULL UNIQUE CHECK (btrim(source_correlation_id) <> ''),
     observed_at timestamptz NOT NULL,
     ingested_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    source_correlation_id text NOT NULL UNIQUE,
-    is_complete boolean NOT NULL,
-    UNIQUE (group_observation_key, cycle_key)
+    outcome text NOT NULL CHECK (outcome IN ('group', 'no_group', 'failed')),
+    failure_code text,
+    UNIQUE (cwl_group_poll_key, cycle_key, clan_key, observed_at, outcome),
+    CHECK ((outcome = 'failed') = (failure_code IS NOT NULL))
 );
+CREATE INDEX cwl_group_poll_recent ON guild.cwl_group_poll (cycle_key, clan_key, observed_at DESC);
+COMMENT ON COLUMN guild.cwl_group_poll.clan_key IS
+    'The tracked clan whose league group was requested. The response has no group ID, so the '
+    'cycle and this clan identify the group.';
+COMMENT ON COLUMN guild.cwl_group_poll.outcome IS
+    'group: the response held a league group. no_group: the clan was in no league group. failed: '
+    'no usable response; it is no evidence about registration or rounds.';
+CREATE TABLE guild.fact_cwl_group_observation (
+    group_observation_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    cwl_group_poll_key bigint NOT NULL UNIQUE,
+    cycle_key bigint NOT NULL,
+    clan_key bigint NOT NULL,
+    observed_at timestamptz NOT NULL,
+    poll_outcome text GENERATED ALWAYS AS ('group'::text) STORED,
+    source_season text NOT NULL CHECK (btrim(source_season) <> ''),
+    source_state text NOT NULL,
+    is_complete boolean NOT NULL,
+    UNIQUE (group_observation_key, cycle_key),
+    FOREIGN KEY (cwl_group_poll_key, cycle_key, clan_key, observed_at, poll_outcome)
+        REFERENCES guild.cwl_group_poll (cwl_group_poll_key, cycle_key, clan_key, observed_at, outcome)
+);
+CREATE INDEX cwl_group_observation_recent
+    ON guild.fact_cwl_group_observation (cycle_key, clan_key, observed_at DESC);
+COMMENT ON TABLE guild.fact_cwl_group_observation IS
+    'The league group of one cycle and requesting clan as one poll saw it, with its registered '
+    'pools and round references. A row is stored only when the group changed; the guild service '
+    'decides. A poll without a row saw the state of the latest earlier row of its cycle and clan.';
 COMMENT ON COLUMN guild.fact_cwl_group_observation.source_season IS
     'Opaque source season, observed as 2026-11-02. Not constrained to YYYY-MM and not a group ID.';
 CREATE TABLE guild.fact_cwl_registered_clan (
@@ -113,12 +182,20 @@ CREATE TABLE guild.fact_cwl_registered_player (
 CREATE TABLE guild.cwl_round_war_reference (
     group_observation_key bigint NOT NULL REFERENCES guild.fact_cwl_group_observation,
     round_ordinal smallint NOT NULL CHECK (round_ordinal BETWEEN 1 AND 7),
+    tag_position smallint NOT NULL CHECK (tag_position > 0),
     source_war_tag text NOT NULL CHECK (source_war_tag <> ''),
     war_key bigint,
-    PRIMARY KEY (group_observation_key, round_ordinal, source_war_tag),
+    PRIMARY KEY (group_observation_key, round_ordinal, tag_position),
     FOREIGN KEY (war_key, source_war_tag) REFERENCES guild.dim_war (war_key, source_war_tag),
     CHECK (source_war_tag <> '#0' OR war_key IS NULL)
 );
+COMMENT ON COLUMN guild.cwl_round_war_reference.tag_position IS
+    'The position of the tag in the round''s source list, from 1. A round that is not scheduled '
+    'yet repeats the placeholder #0 in every position, so the tag cannot identify the row.';
+-- A real war tag appears once in a group observation; the placeholder repeats.
+CREATE UNIQUE INDEX cwl_round_war_reference_tag
+    ON guild.cwl_round_war_reference (group_observation_key, source_war_tag)
+    WHERE source_war_tag <> '#0';
 -- One account has one signup per cycle. Its target clan is part of each
 -- revision, so moving the signup to another participating clan of the cycle is
 -- a revision too (CWL-002, CWL-004).
@@ -273,14 +350,35 @@ CREATE TABLE guild.fact_cwl_bench_resolution (
     CHECK ((resolution = 'served') = (war_day IS NOT NULL)),
     CHECK ((resolution = 'staff_override') = (actor_user_key IS NOT NULL))
 );
-CREATE TABLE guild.cwl_bench_assignment (
-    incident_key bigint PRIMARY KEY,
+-- The War Day reserved for an open incident. Each reservation, move and
+-- release is a revision, so the day that an earlier plan kept free stays
+-- explainable (CWL-013, CWL-017). A revision without a day releases the
+-- reservation. The guild service writes them; a staff override is a
+-- resolution, not a revision.
+CREATE TABLE guild.fact_cwl_bench_assignment_revision (
+    bench_assignment_revision_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    incident_key bigint NOT NULL,
     participation_key bigint NOT NULL,
-    war_day smallint NOT NULL,
-    assigned_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    revision integer NOT NULL CHECK (revision > 0),
+    war_day smallint,
+    recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    UNIQUE (incident_key, revision),
     FOREIGN KEY (incident_key, participation_key) REFERENCES guild.fact_cwl_bench_incident (incident_key, participation_key),
-    FOREIGN KEY (participation_key, war_day) REFERENCES guild.cwl_clan_day
+    FOREIGN KEY (participation_key, war_day) REFERENCES guild.cwl_clan_day,
+    CHECK (revision > 1 OR war_day IS NOT NULL)
 );
+CREATE VIEW guild.current_cwl_bench_assignment AS
+SELECT incident_key, participation_key, war_day, recorded_at AS assigned_at,
+    bench_assignment_revision_key, revision
+FROM (
+    SELECT DISTINCT ON (incident_key) *
+    FROM guild.fact_cwl_bench_assignment_revision
+    ORDER BY incident_key, revision DESC
+) latest
+WHERE war_day IS NOT NULL;
+COMMENT ON VIEW guild.current_cwl_bench_assignment IS
+    'The latest revision of each incident that still reserves a War Day. The day reserved at an '
+    'earlier time is the latest revision recorded at or before that time.';
 CREATE TABLE guild.cwl_export_revision (
     export_revision_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     participation_key bigint NOT NULL REFERENCES guild.cwl_participating_clan,

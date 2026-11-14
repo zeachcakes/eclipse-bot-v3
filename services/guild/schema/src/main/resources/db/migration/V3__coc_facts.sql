@@ -348,17 +348,35 @@ SELECT guild_key, clan_games_enabled AS enabled, clan_games_start_day AS start_d
 FROM guild.guild_settings;
 CREATE TABLE guild.dim_clan_games_event (
     event_key bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    starts_at timestamptz NOT NULL UNIQUE,
+    starts_at timestamptz NOT NULL,
     ends_at timestamptz NOT NULL,
     account_points_cap integer NOT NULL CHECK (account_points_cap > 0),
     schedule_source text NOT NULL CHECK (schedule_source IN ('configured_schedule', 'manual')),
-    source_correlation_id text NOT NULL CHECK (source_correlation_id <> ''),
+    source_correlation_id text NOT NULL UNIQUE CHECK (source_correlation_id <> ''),
+    voided_at timestamptz,
+    replaces_event_key bigint UNIQUE,
     CHECK (ends_at > starts_at + interval '24 hours'),
-    EXCLUDE USING gist (tstzrange(starts_at, ends_at, '[)') WITH &&)
+    CHECK (replaces_event_key <> event_key),
+    CONSTRAINT clan_games_event_replaces_fkey FOREIGN KEY (replaces_event_key)
+        REFERENCES guild.dim_clan_games_event,
+    EXCLUDE USING gist (tstzrange(starts_at, ends_at, '[)') WITH &&) WHERE (voided_at IS NULL)
 );
 COMMENT ON TABLE guild.dim_clan_games_event IS
     'Schedule/cap are configured evidence, not verified API calendar metadata. Freeze event values '
-    'when creating the event; changing the recurring schedule must not rewrite past events.';
+    'when creating the event; changing the recurring schedule must not rewrite past events. '
+    'When the game moves Clan Games, or an event was entered with wrong dates or cap, staff '
+    'reschedule it: the stored event is voided, never edited, and a manual event replaces it.';
+COMMENT ON COLUMN guild.dim_clan_games_event.voided_at IS
+    'Set once when staff reschedule or discard this record of the event (CG-001). It says that '
+    'the bot''s record was wrong, not that the game cancelled Clan Games. A voided event keeps '
+    'its rows as history, collects and assesses nothing more, and frees its window: only events '
+    'that are not voided may not overlap.';
+COMMENT ON COLUMN guild.dim_clan_games_event.replaces_event_key IS
+    'The voided event that this event replaces after a reschedule. An event has at most one '
+    'replacement.';
+COMMENT ON COLUMN guild.dim_clan_games_event.source_correlation_id IS
+    'Unique, also among voided events. The schedule uses one ID per month, so it does not create '
+    'again a month whose event was voided; the replacement is a manual event.';
 
 -- Boundary checkpoints are durable rows. The regular read is one moving row per player.
 CREATE VIEW guild.clan_games_collection_policy AS

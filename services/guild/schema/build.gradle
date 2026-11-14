@@ -116,6 +116,19 @@ jooq {
                                         expression = 'supersededDisposition'
                                     }
                                 }
+                                // dim_clan_games_event.replaces_event_key: the voided event
+                                // that a rescheduled event replaces.
+                                foreignKey {
+                                    expression = 'clan_games_event_replaces_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'replacedEvent'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'replacementEvent'
+                                    }
+                                }
                                 foreignKey {
                                     expression = 'dim_leaderboard_monthly_period_previous_period_key_fkey'
                                     pathMethodName {

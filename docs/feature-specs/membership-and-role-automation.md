@@ -50,7 +50,13 @@ their own roster lifecycle in [regular wars](regular-wars.md).
   read is not evidence of a changed town hall level.
 - **MEM-010:** On joining Discord, send a welcome in the configured welcome
   channel and grant the configured Applicants role. Record the join occurrence
-  independently of retained account links and previous Discord presence.
+  independently of retained account links and previous Discord presence. A
+  join that the bot did not see live, and finds later in the member list, is
+  welcomed only when the member joined within the welcome window before the
+  bot found them (DEC-18, 2026-11-15). The window is a setting, one day by
+  default. An older join gets no welcome, so starting the bot in an existing
+  server does not welcome its long-standing members. Applicants and
+  onboarding follow the join either way.
 - **MEM-011:** On the first successful eligible account link, remove Applicants
   and grant Eclipse, New Joinee, applicable clan roles, and applicable TH roles.
   Eligibility and verification follow the account-linking specification.
@@ -101,8 +107,11 @@ confirmed as a requirement; it must not become an undocumented rule.
 ### Discord onboarding and town hall roles
 
 Retain each observed Discord join/departure occurrence and source time when
-available. Welcome delivery and Applicants assignment are separate external
-operations with separate outcomes. A successfully verified eligible first link
+available. A join or departure that the gateway did not deliver, found by
+comparing the member list at startup or after a reconnect, is retained too
+and marked as such. Such a join sends the welcome only when the member
+joined recently (MEM-010). Welcome delivery and Applicants assignment are
+separate external operations with separate outcomes. A successfully verified eligible first link
 provides the trigger for the agreed Eclipse/New Joinee/clan/TH reconciliation.
 
 TH requirements use supported current profile evidence across every current
@@ -148,6 +157,7 @@ unrelated roles and moderator permissions is outside this automation's scope.
 | One TH16 account unlinks while another TH16 account remains | TH16 stays required. |
 | A player-profile request fails | Do not treat failure as a new TH value or automatically erase the supported TH requirement. |
 | A new Discord member joins | Create join evidence and initiate the configured welcome and Applicants operations, each with its own delivery outcome. |
+| The bot starts in a server with 300 existing members, or reconnects after a member joined two hours ago | Every member found by the member list gets join evidence and Applicants where due. Only the member who joined within the welcome window is welcomed; the long-standing members are not. |
 | The member's first eligible, verified link succeeds | Remove Applicants and require Eclipse, New Joinee, and applicable clan/TH roles. |
 | The first eligible link occurs ten days after the latest join | Remove Applicants and require Eclipse and applicable clan/TH roles; New Joinee is not granted because join plus seven days has passed. |
 | A member with retained eligible links rejoins Discord | At the accepted rejoin, remove Applicants and require Eclipse, New Joinee until rejoin plus seven days, and applicable clan/TH roles; no new verification is required. |

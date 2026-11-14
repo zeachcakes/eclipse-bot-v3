@@ -39,7 +39,7 @@ change, and the order of the service work.
 | V3 | CoC membership polls and periods, member state stored on change, the season calendar, war polls and wars with observations stored on change, player and achievement observations, Clan Games events, read requests, evidence and assessments, and raid polls with weekend state and account totals stored on change |
 | V4 | Discord membership and role events and their projections, chat XP decisions and ranks, warnings, kick decisions with their transitions, authorized kick attempts and their resolutions, manual moderation from the audit log, and leadership notices |
 | V5 | Configuration change history |
-| V6 | CWL registration, revisions of participating clans and of signups with their target clan, versioned plans, pin revisions, freeze records, benches, and ordered exports with frozen inputs and Sheets writer leases, custom events with signup revisions, and activity command operations |
+| V6 | CWL cycles with the revisions of their signup close, league-group polls with registration and round references stored on change, revisions of participating clans and of signups with their target clan, versioned plans, pin revisions, freeze records, bench incidents with assignment revisions, and ordered exports with frozen inputs and Sheets writer leases, custom events with signup revisions, and activity command operations |
 | V7 | Notification operations with their mention targets and outbox state, Kafka receipts, dispatch attempts, catch-up, reports with their typed context, and desired-role generations |
 | V8 | Leaderboard calendar policies, reporting periods, the metric catalog, and current-member boards |
 | V9 | Cross-feature views and every runtime grant |
@@ -69,7 +69,7 @@ They are not measures. History, constraints, permissions, and pending work are
 part of the same service-owned schema; no cross-service schema ownership is
 introduced.
 
-The model has 120 persisted tables. Consolidation reduced 115 tables to 97 by
+The model has 122 persisted tables. Consolidation reduced 115 tables to 97 by
 sharing configuration and one-to-one workflow storage and deriving duplicate
 records through views. Later additions are the season calendar
 `dim_coc_season`, the manual moderation history
@@ -82,7 +82,11 @@ revisions of CWL participating clans `fact_cwl_participation_revision`. The
 review gaps added kick transitions and attempt resolutions, notification
 dispositions, typed moderation, raid-start, CWL-signup and Clan Games progress
 context, raid polls and weekend observations, and CWL Sheets destinations with
-their signup inputs. The [consolidation map](../../../docs/design/guild-star-schema.md#physical-consolidation)
+their signup inputs. The schema review added the CWL group polls
+`cwl_group_poll`, the schedule revisions of CWL cycles
+`fact_cwl_cycle_schedule_revision`, and the bench assignment revisions
+`fact_cwl_bench_assignment_revision`, which replaced the in-place bench
+assignment. The [consolidation map](../../../docs/design/guild-star-schema.md#physical-consolidation)
 records the changes. Views preserve useful source-specific interfaces; the ER
 diagram shows physical storage only.
 
@@ -434,7 +438,15 @@ with its source, failure class and tests.
   wins. A departure clears held roles; a join rebuilds them only from role
   events of that stay. Authority uses confirmed held roles and current
   presence only. A join records the New Joinee policy that the guild settings
-  hold at that time; later configuration changes do not rewrite it.
+  hold at that time; later configuration changes do not rewrite it. At
+  startup and after a reconnect the service compares the gateway member list
+  with the stored presence and records the joins and departures that the
+  gateway did not deliver, marked `member_list_sync`. Such a join carries the
+  member's `joined_at`; such a departure has no source time, and its
+  `occurred_at` is only an upper bound. A join found this way sends the
+  welcome only when the member joined at most
+  `welcome_sync_max_age_seconds` before the sync, 86400 by default, so the
+  first sync of an existing server welcomes nobody who joined long ago.
 - **Membership periods.** A period closes only with an observed departure from
   a complete poll at the exact boundary; failed or partial polls never create a
   departure. Periods of one account overlap only across clans, when a move is
@@ -480,7 +492,12 @@ with its source, failure class and tests.
   and ending reads. Owner-specific slices split points and targets at
   attribution boundaries, and transfers wait for boundary evidence. A member
   assessment freezes its expected episodes and rounds the combined target up
-  to a multiple of ten once; unknown data stays `insufficient_data`.
+  to a multiple of ten once; unknown data stays `insufficient_data`. An event
+  is never edited. When the game moves Clan Games, or an event has wrong
+  dates, staff reschedule it: the stored event is voided (`voided_at`), which
+  stops its collection and keeps its rows, and a manual event that names it
+  (`replaces_event_key`) takes the new dates. The schedule does not create
+  the month of a voided event again.
 - **Leaderboards.** Current-clan eligibility is independent of score
   provenance. Lifetime war stars use the latest profile counter, including
   stars from outside the tracked clan. Monthly and event scoring needs
@@ -494,14 +511,25 @@ with its source, failure class and tests.
   participation stay separate. Plans respect availability, pins, freezes, and
   bench evidence. A provisional seven-day plan is not an optimized schedule or
   proof that staff applied it in game. Participating clans, signups and pins
-  change only by revision. A participating clan's lineup size and withdrawal
+  change only by revision. The signup close of a cycle is a revision too:
+  00:00 UTC on the first day of the month for the scheduled cycle, and a
+  further revision when staff reschedule it (`current_cwl_cycle`). A month
+  can have a further cycle (`month_sequence`) for a second CWL, created after
+  the first ended: only one cycle is open at a time (partial unique index). A
+  leadership prompt names one schedule revision; a reschedule supersedes a
+  prompt that was not attempted and always queues one for the new close. A participating clan's lineup size and withdrawal
   are revisions (`current_cwl_participation`). A signup's target clan is part
   of each revision, so staff move a signup to another participating clan of
   the cycle with a revision (`current_cwl_signup`). An unpin is a revision
   without an account, and `current_cwl_manual_pin` shows the latest revision
   of each pinned slot.
   The first freeze of a War Day is recorded with the cutoff it used, so a
-  later cutoff change does not unfreeze it.
+  later cutoff change does not unfreeze it. Every league-group poll has one
+  row in `cwl_group_poll`; the group, its registered pools and its round
+  references are stored only when they changed, and a round reference keeps
+  its position, because an unscheduled round repeats the tag `#0`. The bench
+  day reserved for an incident changes only by revision, and
+  `current_cwl_bench_assignment` shows the latest one.
 - **Custom events.** A signup keeps every change as a revision with its actor
   and operation; `current_custom_event_signup` shows the latest one.
 - **Reporting periods.** Periods keep their policy and boundaries and do not

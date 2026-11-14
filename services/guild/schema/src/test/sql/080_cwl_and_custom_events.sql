@@ -7,8 +7,10 @@ DO $$
 DECLARE
     staff_id bigint; member_id bigint; clan_a bigint; clan_b bigint; untracked bigint;
     player_a bigint; player_b bigint; war bigint; regular_war bigint; attack bigint;
-    cycle bigint; later_cycle bigint; participation bigint; other_participation bigint;
-    later_participation bigint; group_observation bigint;
+    cycle bigint; earlier_cycle bigint; second_cycle bigint; schedule_rev bigint;
+    participation bigint; other_participation bigint;
+    earlier_participation bigint; group_poll bigint; later_poll bigint; failed_poll bigint;
+    group_observation bigint;
     signup bigint; signup_rev bigint; move_rev bigint; plan bigint; other_plan bigint; incident bigint; export_revision bigint;
     signup_export bigint; sheet_attempt bigint; signups_channel bigint; signups_report uuid;
     signups_revision uuid;
@@ -19,7 +21,8 @@ DECLARE
     op_withdraw uuid := gen_random_uuid(); op_select uuid := gen_random_uuid();
     op_select_other uuid := gen_random_uuid(); op_resize uuid := gen_random_uuid();
     op_withdraw_clan uuid := gen_random_uuid(); op_reselect uuid := gen_random_uuid();
-    op_move uuid := gen_random_uuid();
+    op_move uuid := gen_random_uuid(); op_reschedule uuid := gen_random_uuid();
+    op_second_cycle uuid := gen_random_uuid();
     seen timestamptz := '2026-11-03 08:00+00';
 BEGIN
     SET LOCAL ROLE guild_runtime;
@@ -61,7 +64,8 @@ BEGIN
         (op_withdraw, staff_id, 'custom_event_signup', '{}'),
         (op_select, staff_id, 'cwl_select_clan', '{}'), (op_select_other, staff_id, 'cwl_select_clan', '{}'),
         (op_resize, staff_id, 'cwl_change_clan', '{}'), (op_withdraw_clan, staff_id, 'cwl_change_clan', '{}'),
-        (op_reselect, staff_id, 'cwl_change_clan', '{}'), (op_move, staff_id, 'cwl_move_signup', '{}');
+        (op_reselect, staff_id, 'cwl_change_clan', '{}'), (op_move, staff_id, 'cwl_move_signup', '{}'),
+        (op_reschedule, staff_id, 'cwl_reschedule', '{}'), (op_second_cycle, staff_id, 'cwl_create_cycle', '{}');
     BEGIN
         INSERT INTO guild.activity_command_operation (operation_id, actor_user_key, action, arguments)
         VALUES (op_signup, staff_id, 'cwl_signup', '{"days": [5]}');
@@ -80,19 +84,90 @@ BEGIN
         RAISE EXCEPTION 'A CWL cycle that is not a calendar month was accepted';
     EXCEPTION WHEN check_violation THEN NULL;
     END;
-    INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-12-01') RETURNING cycle_key INTO cycle;
-    IF (SELECT signup_closes_at FROM guild.cwl_cycle WHERE cycle_key = cycle) <> '2026-12-01 00:00+00' THEN
-        RAISE EXCEPTION 'Signups must close at 00:00 UTC on the first day of the month';
-    END IF;
+    -- Only one cycle is open at a time (CWL-018): the earlier cycle ends
+    -- before the next one is created.
+    INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-11-01') RETURNING cycle_key INTO earlier_cycle;
+    INSERT INTO guild.cwl_participating_clan (cycle_key, clan_key)
+    VALUES (earlier_cycle, clan_a) RETURNING participation_key INTO earlier_participation;
     BEGIN
         INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-12-01');
-        RAISE EXCEPTION 'Two CWL cycles were created for one month';
+        RAISE EXCEPTION 'A cycle was created while another cycle was open';
     EXCEPTION WHEN unique_violation THEN NULL;
     END;
     BEGIN
-        UPDATE guild.cwl_cycle SET state = 'ended' WHERE cycle_key = cycle;
+        UPDATE guild.cwl_cycle SET state = 'ended' WHERE cycle_key = earlier_cycle;
         RAISE EXCEPTION 'A cycle ended without its end time';
     EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    UPDATE guild.cwl_cycle SET state = 'ended', ended_at = '2026-11-12 00:00+00' WHERE cycle_key = earlier_cycle;
+    INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-12-01') RETURNING cycle_key INTO cycle;
+    BEGIN
+        INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2026-11-01');
+        RAISE EXCEPTION 'The scheduled CWL cycle of one month was created twice';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.cwl_cycle (calendar_month, month_sequence) VALUES ('2026-12-01', 0);
+        RAISE EXCEPTION 'A cycle before the first of its month was accepted';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    IF EXISTS (SELECT FROM guild.current_cwl_cycle WHERE cycle_key = cycle) THEN
+        RAISE EXCEPTION 'A cycle without a schedule revision had a signup close';
+    END IF;
+
+    -- Signup schedule (CWL-003, CWL-018): the scheduler writes the first
+    -- revision without an actor; staff reschedule with a further revision.
+    BEGIN
+        INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at, actor_user_key)
+        VALUES (cycle, 1, '2026-12-01 00:00+00', staff_id);
+        RAISE EXCEPTION 'A staff schedule revision omitted its reason and operation';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at)
+        VALUES (cycle, 2, '2026-12-03 00:00+00');
+        RAISE EXCEPTION 'A reschedule was recorded without its actor';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at)
+    VALUES (cycle, 1, '2026-12-01 00:00+00');
+    IF (SELECT signup_closes_at FROM guild.current_cwl_cycle WHERE cycle_key = cycle) <> '2026-12-01 00:00+00' THEN
+        RAISE EXCEPTION 'The scheduled close was not 00:00 UTC on the first day of the month';
+    END IF;
+    BEGIN
+        INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at,
+            actor_user_key, reason, operation_id)
+        VALUES (cycle, 1, '2026-12-03 00:00+00', staff_id, 'The game moved CWL', op_reschedule);
+        RAISE EXCEPTION 'One schedule revision number was used twice';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at,
+        actor_user_key, reason, operation_id)
+    VALUES (cycle, 2, '2026-12-03 00:00+00', staff_id, 'The game moved CWL', op_reschedule)
+    RETURNING schedule_revision_key INTO schedule_rev;
+    BEGIN
+        INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at,
+            actor_user_key, reason, operation_id)
+        VALUES (cycle, 3, '2026-12-04 00:00+00', staff_id, 'Retry', op_reschedule);
+        RAISE EXCEPTION 'One operation rescheduled a cycle twice';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    IF (SELECT (signup_closes_at, schedule_revision) FROM guild.current_cwl_cycle WHERE cycle_key = cycle)
+        IS DISTINCT FROM ('2026-12-03 00:00+00'::timestamptz, 2)
+        OR (SELECT count(*) FROM guild.fact_cwl_cycle_schedule_revision WHERE cycle_key = cycle) <> 2 THEN
+        RAISE EXCEPTION 'A rescheduled cycle did not follow its latest revision or lost the earlier one';
+    END IF;
+    BEGIN
+        UPDATE guild.fact_cwl_cycle_schedule_revision SET signup_closes_at = '2026-12-05 00:00+00'
+        WHERE schedule_revision_key = schedule_rev;
+        RAISE EXCEPTION 'A signup close was moved in place';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    -- The second CWL of a month cannot start while the first cycle is open.
+    BEGIN
+        INSERT INTO guild.cwl_cycle (calendar_month, month_sequence) VALUES ('2026-12-01', 2);
+        RAISE EXCEPTION 'A further cycle of a month was created while the first was open';
+    EXCEPTION WHEN unique_violation THEN NULL;
     END;
     BEGIN
         UPDATE guild.cwl_cycle SET calendar_month = '2027-01-01' WHERE cycle_key = cycle;
@@ -113,9 +188,6 @@ BEGIN
         RAISE EXCEPTION 'One clan was selected twice in a cycle';
     EXCEPTION WHEN unique_violation THEN NULL;
     END;
-    INSERT INTO guild.cwl_cycle (calendar_month) VALUES ('2027-01-01') RETURNING cycle_key INTO later_cycle;
-    INSERT INTO guild.cwl_participating_clan (cycle_key, clan_key)
-    VALUES (later_cycle, clan_a) RETURNING participation_key INTO later_participation;
 
     -- Participation revisions: selection, lineup size, withdrawal and a new
     -- selection keep their actor and operation.
@@ -160,7 +232,7 @@ BEGIN
     INSERT INTO guild.fact_cwl_participation_revision (participation_key, revision, lineup_size,
         actor_user_key, operation_id)
     VALUES (participation, 4, 15, staff_id, op_reselect);
-    IF EXISTS (SELECT FROM guild.current_cwl_participation WHERE participation_key = later_participation) THEN
+    IF EXISTS (SELECT FROM guild.current_cwl_participation WHERE participation_key = earlier_participation) THEN
         RAISE EXCEPTION 'A clan without a revision appeared as selected';
     END IF;
     BEGIN
@@ -212,17 +284,92 @@ BEGIN
     EXCEPTION WHEN foreign_key_violation THEN NULL;
     END;
 
-    -- League group observations and round references.
-    INSERT INTO guild.fact_cwl_group_observation (cycle_key, source_season, source_state, observed_at,
-        source_correlation_id, is_complete)
-    VALUES (cycle, '2026-12', 'inWar', seen, 'test:group', true) RETURNING group_observation_key INTO group_observation;
+    -- League group polls. Every poll has a row; the group is stored on change.
     BEGIN
-        INSERT INTO guild.fact_cwl_group_observation (cycle_key, source_season, source_state, observed_at,
-            source_correlation_id, is_complete)
-        VALUES (cycle, ' ', 'inWar', seen, 'test:group:blank', true);
+        INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome)
+        VALUES (cycle, untracked, 'test:group-poll:untracked', seen, 'no_group');
+        RAISE EXCEPTION 'A league group was polled for an untracked clan';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome)
+        VALUES (cycle, clan_a, 'test:group-poll:failed', seen, 'failed');
+        RAISE EXCEPTION 'A failed group poll was recorded without its failure code';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome,
+            failure_code)
+        VALUES (cycle, clan_a, 'test:group-poll:code', seen, 'group', 'http_503');
+        RAISE EXCEPTION 'A successful group poll carried a failure code';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome)
+    VALUES (cycle, clan_a, 'test:group-poll:1', seen, 'group') RETURNING cwl_group_poll_key INTO group_poll;
+    BEGIN
+        INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome)
+        VALUES (cycle, clan_a, 'test:group-poll:1', seen + interval '15 minutes', 'group');
+        RAISE EXCEPTION 'One fetch was recorded as two group polls';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    -- An unchanged group stores no second observation; its poll proves coverage.
+    INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome)
+    VALUES (cycle, clan_a, 'test:group-poll:2', seen + interval '15 minutes', 'group')
+    RETURNING cwl_group_poll_key INTO later_poll;
+    INSERT INTO guild.cwl_group_poll (cycle_key, clan_key, source_correlation_id, observed_at, outcome,
+        failure_code)
+    VALUES (cycle, clan_a, 'test:group-poll:3', seen + interval '30 minutes', 'failed', 'http_503')
+    RETURNING cwl_group_poll_key INTO failed_poll;
+    BEGIN
+        UPDATE guild.cwl_group_poll SET outcome = 'group', failure_code = NULL WHERE cwl_group_poll_key = failed_poll;
+        RAISE EXCEPTION 'A failed group poll was rewritten as a success';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+
+    -- League group observations and round references.
+    BEGIN
+        INSERT INTO guild.fact_cwl_group_observation (cwl_group_poll_key, cycle_key, clan_key, observed_at,
+            source_season, source_state, is_complete)
+        VALUES (failed_poll, cycle, clan_a, seen + interval '30 minutes', '2026-12', 'inWar', true);
+        RAISE EXCEPTION 'A failed poll produced a group observation';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.fact_cwl_group_observation (cwl_group_poll_key, cycle_key, clan_key, observed_at,
+            source_season, source_state, is_complete)
+        VALUES (group_poll, cycle, clan_b, seen, '2026-12', 'inWar', true);
+        RAISE EXCEPTION 'A group observation named another clan than its poll';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.fact_cwl_group_observation (cwl_group_poll_key, cycle_key, clan_key, observed_at,
+            source_season, source_state, is_complete)
+        VALUES (group_poll, cycle, clan_a, seen + interval '1 minute', '2026-12', 'inWar', true);
+        RAISE EXCEPTION 'A group observation named another time than its poll';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.fact_cwl_group_observation (cwl_group_poll_key, cycle_key, clan_key, observed_at,
+            source_season, source_state, is_complete)
+        VALUES (group_poll, cycle, clan_a, seen, ' ', 'inWar', true);
         RAISE EXCEPTION 'A blank source season was accepted';
     EXCEPTION WHEN check_violation THEN NULL;
     END;
+    INSERT INTO guild.fact_cwl_group_observation (cwl_group_poll_key, cycle_key, clan_key, observed_at,
+        source_season, source_state, is_complete)
+    VALUES (group_poll, cycle, clan_a, seen, '2026-12', 'inWar', true)
+    RETURNING group_observation_key INTO group_observation;
+    BEGIN
+        INSERT INTO guild.fact_cwl_group_observation (cwl_group_poll_key, cycle_key, clan_key, observed_at,
+            source_season, source_state, is_complete)
+        VALUES (group_poll, cycle, clan_a, seen, '2026-12', 'ended', true);
+        RAISE EXCEPTION 'One poll stored two group observations';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    IF (SELECT count(*) FROM guild.cwl_group_poll WHERE cycle_key = cycle AND clan_key = clan_a) <> 3
+        OR (SELECT count(*) FROM guild.fact_cwl_group_observation WHERE cycle_key = cycle AND clan_key = clan_a) <> 1 THEN
+        RAISE EXCEPTION 'Group polls and stored observations were not kept apart';
+    END IF;
     INSERT INTO guild.fact_cwl_registered_clan (group_observation_key, clan_key) VALUES (group_observation, clan_a);
     BEGIN
         INSERT INTO guild.fact_cwl_registered_player (group_observation_key, clan_key, player_key,
@@ -234,8 +381,33 @@ BEGIN
     INSERT INTO guild.fact_cwl_registered_player (group_observation_key, clan_key, player_key,
         town_hall_level, source_name)
     VALUES (group_observation, clan_a, player_a, 16, 'Player');
-    INSERT INTO guild.cwl_round_war_reference (group_observation_key, round_ordinal, source_war_tag)
-    VALUES (group_observation, 1, '#8CWL1'), (group_observation, 2, '#0');
+    -- A round that is not scheduled yet repeats the placeholder #0 in every
+    -- position; a real war tag appears once in a group observation.
+    INSERT INTO guild.cwl_round_war_reference (group_observation_key, round_ordinal, tag_position, source_war_tag)
+    VALUES (group_observation, 1, 1, '#8CWL1'), (group_observation, 1, 2, '#8CWL2'),
+        (group_observation, 2, 1, '#0'), (group_observation, 2, 2, '#0'),
+        (group_observation, 2, 3, '#0'), (group_observation, 2, 4, '#0');
+    BEGIN
+        INSERT INTO guild.cwl_round_war_reference (group_observation_key, round_ordinal, tag_position,
+            source_war_tag)
+        VALUES (group_observation, 2, 4, '#8CWL3');
+        RAISE EXCEPTION 'Two tags took one position of a round';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.cwl_round_war_reference (group_observation_key, round_ordinal, tag_position,
+            source_war_tag)
+        VALUES (group_observation, 3, 1, '#8CWL1');
+        RAISE EXCEPTION 'One war tag was referenced twice in a group observation';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.cwl_round_war_reference (group_observation_key, round_ordinal, tag_position,
+            source_war_tag)
+        VALUES (group_observation, 3, 0, '#8CWL4');
+        RAISE EXCEPTION 'A tag position before the first was accepted';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
     BEGIN
         UPDATE guild.cwl_round_war_reference SET war_key = war
         WHERE group_observation_key = group_observation AND source_war_tag = '#0';
@@ -244,12 +416,12 @@ BEGIN
     END;
     BEGIN
         UPDATE guild.cwl_round_war_reference SET war_key = regular_war
-        WHERE group_observation_key = group_observation AND round_ordinal = 1;
+        WHERE group_observation_key = group_observation AND round_ordinal = 1 AND tag_position = 1;
         RAISE EXCEPTION 'A round reference named a war with another tag';
     EXCEPTION WHEN foreign_key_violation THEN NULL;
     END;
     UPDATE guild.cwl_round_war_reference SET war_key = war
-    WHERE group_observation_key = group_observation AND round_ordinal = 1;
+    WHERE group_observation_key = group_observation AND round_ordinal = 1 AND tag_position = 1;
     BEGIN
         DELETE FROM guild.cwl_round_war_reference WHERE group_observation_key = group_observation;
         RAISE EXCEPTION 'A round war reference was deleted';
@@ -266,14 +438,14 @@ BEGIN
     BEGIN
         INSERT INTO guild.fact_cwl_signup_revision (signup_key, cycle_key, participation_key, revision, war_days,
             town_hall_level, actor_user_key, operation_id)
-        VALUES (signup, cycle, later_participation, 1, ARRAY[1]::smallint[], 16, member_id, op_signup);
+        VALUES (signup, cycle, earlier_participation, 1, ARRAY[1]::smallint[], 16, member_id, op_signup);
         RAISE EXCEPTION 'A signup targeted a clan of another cycle';
     EXCEPTION WHEN foreign_key_violation THEN NULL;
     END;
     BEGIN
         INSERT INTO guild.fact_cwl_signup_revision (signup_key, cycle_key, participation_key, revision, war_days,
             town_hall_level, actor_user_key, operation_id)
-        VALUES (signup, later_cycle, later_participation, 1, ARRAY[1]::smallint[], 16, member_id, op_signup);
+        VALUES (signup, earlier_cycle, earlier_participation, 1, ARRAY[1]::smallint[], 16, member_id, op_signup);
         RAISE EXCEPTION 'A signup revision named another cycle than its signup';
     EXCEPTION WHEN foreign_key_violation THEN NULL;
     END;
@@ -505,15 +677,53 @@ BEGIN
         RAISE EXCEPTION 'Repeated source attack duplicated penalty';
     EXCEPTION WHEN unique_violation THEN NULL;
     END;
+    -- The reserved bench day changes only by revision (CWL-013, CWL-017).
     BEGIN
-        INSERT INTO guild.cwl_bench_assignment (incident_key, participation_key, war_day)
-        VALUES (incident, other_participation, 2);
+        INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision, war_day)
+        VALUES (incident, other_participation, 1, 2);
         RAISE EXCEPTION 'A bench was assigned in another clan';
     EXCEPTION WHEN foreign_key_violation THEN NULL;
     END;
-    INSERT INTO guild.cwl_bench_assignment (incident_key, participation_key, war_day)
-    VALUES (incident, participation, 2);
-    UPDATE guild.cwl_bench_assignment SET war_day = 3, assigned_at = clock_timestamp() WHERE incident_key = incident;
+    BEGIN
+        INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision, war_day)
+        VALUES (incident, participation, 1, 8);
+        RAISE EXCEPTION 'A bench was assigned to a War Day the clan does not have';
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision)
+        VALUES (incident, participation, 1);
+        RAISE EXCEPTION 'The first bench revision reserved no War Day';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision, war_day)
+    VALUES (incident, participation, 1, 2);
+    BEGIN
+        INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision, war_day)
+        VALUES (incident, participation, 1, 3);
+        RAISE EXCEPTION 'One bench revision number was used twice';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE guild.fact_cwl_bench_assignment_revision SET war_day = 3 WHERE incident_key = incident;
+        RAISE EXCEPTION 'A reserved bench day was moved in place';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    -- Day 2 did not serve the bench, so the reservation moves to Day 3.
+    INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision, war_day)
+    VALUES (incident, participation, 2, 3);
+    IF (SELECT (war_day, revision) FROM guild.current_cwl_bench_assignment WHERE incident_key = incident)
+        IS DISTINCT FROM (3::smallint, 2)
+        OR (SELECT war_day FROM guild.fact_cwl_bench_assignment_revision
+            WHERE incident_key = incident AND revision = 1) <> 2 THEN
+        RAISE EXCEPTION 'A moved bench day lost its earlier reservation';
+    END IF;
+    -- A revision without a day releases the reservation.
+    INSERT INTO guild.fact_cwl_bench_assignment_revision (incident_key, participation_key, revision)
+    VALUES (incident, participation, 3);
+    IF EXISTS (SELECT FROM guild.current_cwl_bench_assignment WHERE incident_key = incident) THEN
+        RAISE EXCEPTION 'A released bench day stayed reserved';
+    END IF;
     BEGIN
         INSERT INTO guild.fact_cwl_bench_resolution (incident_key, resolution, reason)
         VALUES (incident, 'served', 'Sat out');
@@ -663,6 +873,19 @@ BEGIN
     EXCEPTION WHEN insufficient_privilege THEN NULL;
     END;
     UPDATE guild.cwl_export_revision SET sheets_state = 'failed' WHERE export_revision_key = export_revision;
+
+    -- CWL-018: after the first cycle ended, staff create the further cycle of a
+    -- month in which the game runs a second CWL.
+    UPDATE guild.cwl_cycle SET state = 'ended', ended_at = '2026-12-12 00:00+00' WHERE cycle_key = cycle;
+    INSERT INTO guild.cwl_cycle (calendar_month, month_sequence) VALUES ('2026-12-01', 2)
+    RETURNING cycle_key INTO second_cycle;
+    INSERT INTO guild.fact_cwl_cycle_schedule_revision (cycle_key, revision, signup_closes_at,
+        actor_user_key, reason, operation_id)
+    VALUES (second_cycle, 1, '2026-12-16 00:00+00', staff_id, 'Second CWL of the month', op_second_cycle);
+    IF (SELECT count(*) FROM guild.current_cwl_cycle WHERE calendar_month = '2026-12-01') <> 2
+        OR (SELECT count(*) FROM guild.cwl_cycle WHERE state <> 'ended') <> 1 THEN
+        RAISE EXCEPTION 'A month did not keep its two CWL cycles, or more than one cycle was open';
+    END IF;
 
     -- Custom events.
     BEGIN

@@ -186,7 +186,9 @@ A retried call must not apply its effect twice. The SQL used these identities:
   (SR-LB-04).
 - Discord membership and role events: `operation_id`, unique per row. The
   collector must pass a stable ID for a redelivered gateway event; the column
-  default is random and does not deduplicate.
+  default is random and does not deduplicate. A `member_list_sync` event
+  derives its ID from the member and the stay it starts or ends, so a
+  repeated sync stores nothing new (SR-DSC-07).
 - Chat XP: the Discord message ID (SR-XP-03). Manual moderation: the audit log
   entry ID (SR-MOD-12).
 - Notifications: the logical key of an operation (SR-NTF-01) and the Kafka
@@ -223,9 +225,11 @@ them, and the schema check `110_runtime_grants.sql` proves it.
 - Moderation: `warning`, `warning_revocation`,
   `fact_moderation_action_attempt`, `fact_manual_moderation_action`,
   `fact_moderation_notice`.
-- CWL and custom events: `fact_cwl_group_observation`,
+- CWL and custom events: `fact_cwl_cycle_schedule_revision`, `cwl_group_poll`,
+  `fact_cwl_group_observation`,
   `fact_cwl_registered_clan`, `fact_cwl_registered_player`,
   `fact_cwl_signup_revision`, `fact_cwl_plan_input`, `fact_cwl_bench_incident`,
+  `fact_cwl_bench_assignment_revision`,
   `fact_cwl_bench_resolution`, `fact_cwl_export_attempt`,
   `fact_cwl_manual_pin_revision`, `fact_cwl_day_freeze`, `fact_cwl_participation_revision`,
   `fact_custom_event_signup_revision`,
@@ -286,8 +290,9 @@ A user holds a capability when all of these are true:
 with no `discord_member_state` row. Authority now fails closed: unknown
 presence grants nothing, although the held-role projection (SR-DSC-03) can
 hold a role before the first membership event. The Discord collector records
-presence from the gateway member list at startup and after each reconnect, so
-existing staff gain a state row without a join event.
+presence from the gateway member list at startup and after each reconnect
+(SR-DSC-07), so existing staff gain a state row without a gateway join
+event: the sync records their join from the member list.
 
 **Acceptance:** a held `admin` role without a state row grants nothing; the
 same role after a present state row grants Configure; after a departure it
@@ -350,6 +355,7 @@ Source: `set_new_joinee_days`, `set_verification_policy`,
 | Verification policy | `verification_max_age_seconds` (default 900) | `> 0` |
 | Transfer policy | `transfer_pending_max_age_seconds` (172800), `transfer_approval_max_age_seconds` (86400) | `> 0` |
 | Kick policy | `kick_max_attempts` (3), `kick_retry_seconds` (300) | `> 0` |
+| Welcome window | `welcome_sync_max_age_seconds` (86400, DEC-18) | `> 0` |
 | Clan Games schedule | `clan_games_enabled` (true), `clan_games_start_day` (22), `clan_games_start_time_utc` (08:00), `clan_games_event_seconds` (518400), `clan_games_account_points_cap` (4000) | day 1–28; event longer than 86400 seconds; cap `> 0` |
 | Clan Games reads | `clan_games_refresh_seconds` (900), `clan_games_checkpoint_tolerance_seconds` (1800, DEC-03) | `> 0`; the tolerance is shorter than the event minus 86400 seconds, so the T−24h window opens inside the event |
 
@@ -499,8 +505,9 @@ Every insert, update and delete on these tables writes one row to
 `fact_configuration_change`: `guild_settings`, `role_binding`,
 `channel_binding`, `clan_collection_settings`, `war_reminder_setting`,
 `developer_allowlist`, `chat_xp_eligibility_role`, `chat_rank_role_binding`,
-`leaderboard_calendar_policy`, and `dim_clan_games_event` rows created by
-hand (`schedule_source = 'manual'`; scheduled events are not recorded). The
+`leaderboard_calendar_policy`, `dim_clan_games_event` rows created by
+hand (`schedule_source = 'manual'`; scheduled events are not recorded), and
+the voiding of any Clan Games event (SR-CG-14). The
 SQL also covered `chat_xp_policy` and `leaderboard_metric_definition`. The
 service cannot write that reference data (SR-GRANT), so only a migration
 changes it, and it has no change history.
@@ -1057,11 +1064,14 @@ Source: `create_scheduled_clan_games` (V3).
   `clan_games_start_time_utc`, in UTC. End: start plus
   `clan_games_event_seconds`. Cap: `clan_games_account_points_cap`. Source
   `configured_schedule`, correlation `schedule:<year>:<month>`.
-- Idempotent by start time: an event that already starts then is returned,
-  even if its end or cap differ from the current settings. Changing the
-  schedule never rewrites an existing event.
-- Backed by: unique start; end more than 24 hours after the start; no
-  overlapping events (exclusion constraint).
+- Idempotent by month: when the event with that month's correlation ID
+  exists, it is returned, even if its start, end or cap differ from the
+  current settings, and also when it was voided (SR-CG-14). Changing the
+  schedule never rewrites an existing event, and the schedule never creates
+  the month of a voided event again.
+- Backed by: a unique correlation ID; end more than 24 hours after the
+  start; no overlap between events that are not voided (partial exclusion
+  constraint).
 
 ### SR-CG-02 Manual events
 
@@ -1069,8 +1079,11 @@ Source: `create_manual_clan_games` (V3).
 
 - The actor must be able to configure. [permission]
 - A non-blank reason and correlation ID are required. [rule]
-- An event that already starts at that time is returned only when its end and
-  cap are the same. [rule]
+- An event that is not voided and already starts at that time is returned
+  only when its end and cap are the same. [rule] A retry with the same
+  correlation ID returns the stored event.
+- The window must not overlap an event that is not voided. [rule] To move an
+  event, reschedule it (SR-CG-14).
 - A manual event is recorded in the configuration change history
   (SR-CFG-13). There is no manual score path.
 
@@ -1115,7 +1128,7 @@ Source: `validate_clan_games_read_request` (V3).
 
   | Purpose | `due_at` | `collect_from` |
   | --- | --- | --- |
-  | `baseline` | the event start | the end of the previous event, or the creation of the event when there is none; the counter does not move between events |
+  | `baseline` | the event start | the end of the previous event that is not voided, or the creation of the event when there is none; the counter does not move between events |
   | `t_minus_24h` | the event end minus 24 hours | `due_at` minus `clan_games_checkpoint_tolerance_seconds` (default 1800, DEC-03) |
   | `final` | the event end | `due_at` |
   | `regular`, `transfer` | inside `[start, end)` | `due_at` |
@@ -1200,7 +1213,8 @@ Source: `complete_clan_games_read_request`, `close_missed_clan_games_reads`
   - `t_minus_24h` and the as-of time is after its due time;
   - `regular` and the as-of time is at or after the event end;
   - `transfer` and its transfer is `rejected`, `cancelled` or `expired`;
-  - any purpose, once a later event has started.
+  - any purpose, once a later event has started;
+  - any purpose, once its event is voided (SR-CG-14).
 - `final` and `transfer` reads otherwise stay retryable until the next event
   starts. Idempotent; returns the number closed. A missed read is absent
   evidence, never a zero.
@@ -1322,6 +1336,45 @@ Members read points (SR-CG-09). Only Leadership reads pass/fail results
 (SR-CFG-11); a shared activity channel, a leaderboard or a general log never
 shows them (LB-011).
 
+### SR-CG-14 Reschedule or void an event
+
+Source: none; added on 2026-11-14 (CG-001, DEC-19). The game has moved
+Clan Games, and staff can enter wrong dates. The SQL could not follow
+either: an event's start was unique, events could not overlap, and the
+runtime role could only insert one, so the stored event blocked its own
+replacement. Voiding says that the bot's record of the event was wrong. It
+does not say that the game cancelled Clan Games.
+
+- The actor must be able to configure. [permission] A non-blank reason is
+  required. [rule]
+- Reschedule, in one transaction: lock the event; set its `voided_at`; create
+  the manual event with the new dates and cap (SR-CG-02), whose
+  `replaces_event_key` names the voided event; record both changes in the
+  configuration change history (SR-CFG-13); close the pending read requests
+  of the voided event as `missed` (SR-CG-07); queue the reads of the new
+  event (SR-CG-05).
+- Void without a replacement, for a month in which the game runs no Clan
+  Games: the same steps without the new event.
+- `voided_at` is set once, and no other column of an event changes. An event
+  that is already voided is returned unchanged.
+- A voided event queues no read, computes no progress or assessment and
+  publishes no report. Its stored reads, progress, assessments and report
+  revisions stay as history; nothing is deleted or rewritten.
+- The baseline window of the new event opens at the end of the previous
+  event that is not voided (SR-CG-04). A baseline that the new event can no
+  longer read stays `insufficient_data`; reads of the voided event are not
+  copied to it.
+- Backed by: `voided_at` is the only updatable column of an event
+  (SR-GRANT); only events that are not voided may not overlap; an event
+  replaces at most one event, and never itself; the correlation ID stays
+  unique among voided events, so the schedule cannot create the month again.
+
+**Acceptance:** the game moves Clan Games by two days: reschedule the
+scheduled event; the new manual event names the voided one and may overlap
+its window; the scheduler run for that month creates nothing; the voided
+event and its reads remain readable; a second reschedule of the voided event
+changes nothing.
+
 ## SR-DSC: Discord presence and roles
 
 **Specs:** MEM-006, MEM-007, MEM-009 to MEM-016, WAR-003, XP-008, CFG-010.
@@ -1342,6 +1395,11 @@ Source: `capture_discord_join_policy` (V4).
   UTC. Later settings changes do not rewrite it.
 - `occurred_at` is the source time; `observed_at` and `recorded_at` are
   collection times.
+- `event_source` says how the collector learned of the event:
+  `gateway_event` (the default) or `member_list_sync` (SR-DSC-07). A
+  `member_list_sync` departure has no source time, so its `occurred_at` is
+  an upper bound. Backed by: the two sources (`CHECK`); a join of either
+  source records its policy.
 
 ### SR-DSC-02 Presence projection
 
@@ -1427,6 +1485,57 @@ seven days); first link ten days after join (no New Joinee); rejoin with
 retained eligible links (Applicants removed and New Joinee until rejoin plus
 seven days at the rejoin); and a delayed role event naming the earlier stay's
 join is ignored.
+
+### SR-DSC-07 Member list sync
+
+Source: none; added on 2026-11-14 (CFG-010, DEC-06). A state row needs a
+membership event, and the gateway sends none for a member who joined or left
+while the collector was not connected.
+
+At startup and after each gateway reconnect, compare the complete gateway
+member list with `discord_member_state`, under the member lock:
+
+- A listed member without a state row, or with `is_present = false`: record
+  a `join` with `event_source = 'member_list_sync'` and `occurred_at` equal
+  to the member's `joined_at`.
+- A listed member who is present, but whose `joined_at` is later than the
+  join of the stored stay, left and came back: record a `member_list_sync`
+  `departure` and then the `join`, both with `occurred_at` equal to the new
+  `joined_at`. The join has the later key, so it wins the projection.
+- A member who is present in the state but not listed: record a
+  `member_list_sync` `departure` with `occurred_at` equal to the sync time.
+- A listed member whose stored stay has the same `joined_at`: store nothing.
+- An incomplete member list records no departure. [rule]
+
+Each event then follows SR-DSC-01, SR-DSC-02 and SR-DSC-05 like a gateway
+event: a sync join records the New Joinee policy, counts its expiry from
+`joined_at`, and can become the accepted join that onboarding uses
+(SR-DSC-06). The `operation_id` is derived from the member and the
+`joined_at` of the stay that the event starts or ends, so a repeated sync
+stores nothing new (SR-CTX-04).
+
+`occurred_at` of a `member_list_sync` departure is the latest time at which
+the member can have left, not an observed time. Do not present it as the
+departure time, and do not use it where a rule needs the exact time.
+
+**Welcome (DEC-18, decided 2026-11-15, MEM-010):** a `member_list_sync` join
+that becomes the accepted join sends the welcome only when it is recent: its
+`occurred_at`, the member's `joined_at`, is at most
+`welcome_sync_max_age_seconds` before its `observed_at`, the time of the
+sync. The default is 86400 seconds, a guild setting (SR-CFG-02). An older
+join sends no welcome, so the first sync of an existing server welcomes
+nobody who joined long ago. A `gateway_event` join always sends it. The
+Applicants role, New Joinee and onboarding do not depend on this: they follow
+the accepted join. Decide and queue the welcome in the transaction that
+records the join, with the setting read at that time.
+
+**Acceptance:** a staff member who was in the server before the first
+startup has a present state row after the first sync and can configure; a
+second sync stores no event; a member who left during an outage is absent
+after the sync, with a departure marked `member_list_sync`; a member who
+left and rejoined during an outage has a new accepted join at the new
+`joined_at`. A member who joined two hours before the sync is welcomed; a
+member who joined 300 days before it is not, and both get Applicants.
 
 ## SR-XP: Chat XP and ranks
 
@@ -1830,14 +1939,15 @@ Source: `activity_require_staff`, `activity_require_account` (V6).
 
 ## SR-CWL: Clan War Leagues
 
-**Specs:** CWL-001 to CWL-017. **Tables:** `cwl_cycle`,
+**Specs:** CWL-001 to CWL-018. **Tables:** `cwl_cycle`,
+`fact_cwl_cycle_schedule_revision`,
 `cwl_participating_clan`, `fact_cwl_participation_revision`, `cwl_clan_day`, `fact_cwl_day_freeze`,
-`fact_cwl_group_observation`, `fact_cwl_registered_clan`,
+`cwl_group_poll`, `fact_cwl_group_observation`, `fact_cwl_registered_clan`,
 `fact_cwl_registered_player`, `cwl_round_war_reference`, `cwl_signup`,
 `fact_cwl_signup_revision`, `cwl_plan_revision`, `fact_cwl_plan_input`,
 `cwl_plan_assignment`, `fact_cwl_manual_pin_revision`, `cwl_replan_request`,
 `fact_cwl_bench_incident`, `fact_cwl_bench_resolution`,
-`cwl_bench_assignment`, `cwl_export_revision`, `cwl_export_signup_input`,
+`fact_cwl_bench_assignment_revision`, `cwl_export_revision`, `cwl_export_signup_input`,
 `cwl_sheet_destination`, `fact_cwl_export_attempt` (`V6`). **Checks:** `110_cwl_and_custom_events.sql`. The prompt and the
 roster and signup-list reports are in SR-NTF-14 to SR-NTF-17.
 
@@ -1845,12 +1955,27 @@ roster and signup-list reports are in SR-NTF-14 to SR-NTF-17.
 
 Source: `cwl_create_cycle` (V6).
 
-The actor must be able to configure. [permission] A cycle is one calendar
-month (day 1), unique, starting in state `signups`. Signups close at 00:00 UTC
-on the first day of that month (generated column).
+The actor must be able to configure. [permission] A cycle belongs to one
+calendar month (day 1) and starts in state `signups`. The first cycle of a
+month has `month_sequence` 1. Its signups close at 00:00 UTC on the first day
+of that month by default (CWL-003).
 
-**Change (CWL-001):** the scheduler creates each month's cycle and
+**Change (CWL-001):** the scheduler creates the first cycle of each month and
 queues the leadership prompt (SR-NTF-15), without a human actor.
+
+**Change (CWL-018, 2026-11-14):** the close time was a generated column, and
+a month could have one cycle. The game has moved CWL and has run two in one
+month, so the close is now a revision. Creating a cycle writes its first
+`fact_cwl_cycle_schedule_revision` in the same transaction: revision 1 with
+the default close and no actor for a scheduled cycle. `current_cwl_cycle` is
+each cycle with its latest revision, and every rule that asks whether signups
+have closed reads that time (SR-CWL-02, SR-CWL-03, SR-CWL-12). Rescheduling
+and further cycles are in SR-CWL-19. Only one cycle is open at a time: the
+scheduler creates the first cycle of a month only after the previous cycle
+ended, and creates nothing while one is open. [rule] Backed by: one open
+cycle (partial unique index); one cycle per month and sequence; one revision
+number per cycle; only revision 1 may lack an actor, and an actor comes with
+a reason and an operation (`CHECK`).
 
 ### SR-CWL-02 Select, correct or withdraw a participating clan
 
@@ -1921,7 +2046,8 @@ From the latest complete league-group observation of the cycle that registers
 the participating clan: `registered` when the account is in that clan's
 registered pool, `not_registered` otherwise. `unknown` when no complete
 observation registers the clan. Registration is not current clan membership
-and not a daily lineup.
+and not a daily lineup. Observations are stored on change (SR-CWL-18), so
+the latest stored observation is the group as the latest `group` poll saw it.
 
 ### SR-CWL-05 Frozen days
 
@@ -1955,9 +2081,14 @@ Source: `cwl_validate_war_reference`, `cwl_pending_war_reference` (V6).
   round war reference
   whose round equals the War Day, in a group observation of this cycle that
   registers the clan. [rule]
-- A round war reference keeps its group, round and tag forever; its war key
-  can be filled in once and must be a CWL war; it is never deleted. A `#0` tag
-  has no war. [rule]
+- A round war reference keeps its group, round, position and tag forever; its
+  war key can be filled in once and must be a CWL war; it is never deleted. A
+  `#0` tag has no war. [rule]
+- Store every tag of a round with its position in the source list, from 1. A
+  round that is not scheduled yet repeats `#0` in every position; store each
+  one. Backed by: one row per observation, round and position (primary key);
+  a tag other than `#0` appears once in an observation (partial unique
+  index).
 
 ### SR-CWL-08 Bench incidents
 
@@ -1981,9 +2112,9 @@ Source: `cwl_next_bench_day` (V6).
 
 For an open incident (no resolution) in a cycle that has not ended:
 
-- when the incident has an assigned day that is now frozen, still in the
-  account's availability with the signup not withdrawn, and the account is not
-  `not_registered`, that day;
+- when the incident has a reserved day (`current_cwl_bench_assignment`) that
+  is now frozen, still in the account's availability with the signup not
+  withdrawn, and the account is not `not_registered`, that day;
 - otherwise the earliest War Day after the incident's war day that is in the
   account's availability, not frozen, and where the account is not
   `not_registered`;
@@ -2161,10 +2292,15 @@ Source: `cwl_assign_bench`, `cwl_record_bench_service`, `cwl_end_cycle`,
 `cwl_override_bench`, `cwl_validate_resolution` (V6).
 
 - Assign: lock the incident; more than one open incident for the account
-  fails [rule]; assign the next bench day (SR-CWL-09) or nothing; queue a
-  replan request (`mandatory_bench`).
+  fails [rule]; find the next bench day (SR-CWL-09). When it differs from the
+  reserved day, append a revision to `fact_cwl_bench_assignment_revision`:
+  the new day, or no day when none is left and a day was reserved. An
+  unchanged day writes nothing. Queue a replan request (`mandatory_bench`).
+  A reserved day is never changed in place, so the day that an earlier plan
+  kept free is the latest revision recorded at or before that plan
+  (CWL-017).
 - Serve: lock the incident; a resolved incident returns at once. The day must
-  be the assigned day and the next bench day [rule], in the account's
+  be the reserved day and the next bench day [rule], in the account's
   availability [rule], and its war must have ended with a complete final
   roster (`warEnded`, roster size equal to the team size) that does not
   contain the account [rule]. Registration must be confirmed: the latest
@@ -2180,7 +2316,9 @@ Source: `cwl_assign_bench`, `cwl_record_bench_service`, `cwl_end_cycle`,
 - Resolutions [rule]: an override needs a staff actor; an expiry needs an
   ended cycle; a service needs an assignment on that day and only one open
   incident. Backed by: one resolution per incident; a day exactly on
-  `served`; an actor exactly on `staff_override`.
+  `served`; an actor exactly on `staff_override`; one revision number per
+  incident, a day on the first revision, and a reserved day that is a War
+  Day of the incident's clan (foreign keys).
 
 **Acceptance (DEC-15, decided 2026-11-14):** a provisionally reserved day
 whose registered pool was never confirmed does not serve and the incident
@@ -2236,6 +2374,94 @@ Source: `cwl_project_export_attempt` (V6).
 Sheet shows N+1. Repeat after a destination change and after a lost write
 response. CSV and Sheets retain independent outcomes, stable retry identities,
 and exact input/destination provenance; sync failures never mutate the plan.
+
+### SR-CWL-18 Group polls and store-on-change
+
+Source: none; added on 2026-11-14 (CWL-009, CWL-017). The SQL stored the
+whole group, with every registered pool and round reference, for each fetch:
+about a quarter of a million rows for one clan in one cycle at a poll every
+900 seconds, nearly all of them copies. It kept no row for a failed fetch
+and did not keep the clan whose group was requested.
+
+- Every league-group poll of a tracked clan stores one `cwl_group_poll` row
+  for the cycle and that clan: `group`, `no_group`, or `failed` with a
+  failure code. The row proves that the poll ran; a failed poll is no
+  evidence about registration or rounds. The response has no group ID, so
+  the cycle and the requesting clan identify the group. Only one cycle is
+  open at a time (SR-CWL-19), so a poll belongs to that cycle, also in a
+  month with two CWLs.
+- Store a `fact_cwl_group_observation`, with its registered clans, registered
+  players and round references, only when the source season, the state, the
+  completeness, a registered pool or a round reference differs from the
+  latest stored observation of the same cycle and clan. The first `group`
+  poll always stores one. Apply polls in observation order.
+- A poll without an observation saw the state of the latest earlier stored
+  observation of its cycle and clan. A rule that reads the latest complete
+  group observation at or before a time reads the latest stored one
+  (SR-CWL-04, SR-CWL-16); the `group` polls show how far that state is
+  confirmed.
+- Backed by: one poll row per correlation ID; a failure code exactly on
+  `failed`; an observation names one `group` poll of the same cycle, clan
+  and time (composite foreign key with the outcome), and a poll stores at
+  most one observation; polls are never updated or deleted.
+
+**Acceptance:** three polls of an unchanged group store three poll rows and
+one observation; a new round's war tags store a second observation; a failed
+poll stores no observation and changes no registration status.
+
+### SR-CWL-19 Reschedule signups and further cycles
+
+Source: none; added on 2026-11-14 (CWL-018, DEC-20). The owner reported that
+the game has moved CWL and has run two CWLs in one month, and decided the
+details on 2026-11-15 (DEC-21).
+
+Both commands follow the activity envelope (SR-ACT-01). The actor holds
+`leadership`, `co_leader` or `admin`, as for selecting a participating clan
+(SR-CWL-02). [permission] A non-blank reason is required. [rule]
+
+Reschedule:
+
+1. Lock the cycle. It must not have ended, and none of its War Days may have
+    frozen (SR-CWL-05). [rule]
+2. Insert the next `fact_cwl_cycle_schedule_revision` with the new close, the
+    actor, the reason and the operation. Signups, participating clans, plans
+    and their history stay with the cycle; nothing is deleted.
+3. When the cycle is in `planning` and the new close is in the future, set it
+    back to `signups`. Members can sign up and edit again. The plans made at
+    the earlier close stay as history, and the new close begins new plans
+    (SR-CWL-12).
+4. A new close that is not in the future lets the close step run at once
+    (SR-CWL-12).
+5. Replace the leadership prompt in the same transaction (SR-NTF-15): the
+    new revision always gets its own prompt, due seven days before the new
+    close, or at once when that time has passed.
+
+Further cycle:
+
+1. No other cycle may be open: every earlier cycle has ended (SR-CWL-16).
+    [rule] Two cycles are never open together, so a collected league group
+    or war belongs to the one open cycle (SR-CWL-18).
+2. Create a `cwl_cycle` for the month with the next `month_sequence` and its
+    revision 1, which carries the close, the actor, the reason and the
+    operation. Queue its leadership prompt.
+3. Leadership then selects its participating clans (SR-CWL-02). Signups of
+    the earlier cycle are not copied.
+
+The scheduler follows the same rule: it creates the first cycle of a month
+only after the previous cycle ended (SR-CWL-01).
+
+Backed by: one open cycle at a time (partial unique index); one cycle per
+month and sequence; one schedule revision per operation; revisions never
+change (SR-CTX-06).
+
+**Acceptance:** the game moves CWL by two days: reschedule; signups stay and
+close at the new time; the earlier revision and its actor remain; the new
+revision has its own prompt, and a prompt that was not attempted is
+superseded. Reschedule after the close and before the first freeze: the
+cycle takes signups again and the earlier plans remain. Reschedule after a
+War Day froze: refused. A second cycle while the first is open: refused;
+after the first ended, the month has two cycles with separate signups, clans
+and plans. A member without one of the three roles: refused.
 
 ## SR-CUS: Custom events
 
@@ -2311,7 +2537,8 @@ Source: `_enqueue_notification` (V7).
   `superseded`, it inserts `fact_notification_disposition` in the same
   transaction: the disposition, its cause (`expiry_passed`, `war_inactive`,
   `newer_report_revision`, `coalesced_into_catchup`,
-  `role_generation_replaced`, `member_absent`, `no_unused_attacks`), the
+  `role_generation_replaced`, `member_absent`, `no_unused_attacks`,
+  `schedule_changed`), the
   time and, for a
   supersession, the replacing operation. Backed by: one disposition per
   operation; expiry causes only for `expired`; a newer revision or catch-up
@@ -2640,17 +2867,28 @@ Source: `validate_notification_cwl_context` (V7).
 
 A prompt context (no plan) belongs to a `cwl_leadership` operation for the
 `leadership` audience; a plan context belongs to a `cwl_roster` operation for
-`members`. [rule] Context rows never change. Backed by: one prompt per cycle;
-one roster operation per plan and War Day.
+`members`. [rule] Context rows never change. Backed by: a prompt names one
+schedule revision of its cycle, and a schedule revision has one prompt; one
+roster operation per plan and War Day; a roster operation names no schedule
+revision.
 
 ### SR-NTF-15 CWL leadership prompt
 
 Source: `queue_cwl_leadership_prompt` (V7).
 
 The cycle must exist [missing], and the `leadership_notifications` channel
-must be bound [rule]. Queue `cwl:leadership:<cycle>`: a `cwl_leadership` ping
-due seven days (168 hours) before signups close and expiring at the close,
-unless explicit times are given, with its context row.
+must be bound [rule]. Queue `cwl:leadership:<cycle>:schedule:<revision>`: a
+`cwl_leadership` ping due seven days (168 hours) before the signup close of
+that schedule revision and expiring at the close, unless explicit times are
+given, with its context row, which names the schedule revision.
+
+**Change (CWL-018, 2026-11-14):** the prompt was one per cycle, so a
+rescheduled cycle could not prompt for its new close. A reschedule
+(SR-CWL-19) supersedes the prompt of the earlier revision when no send was
+attempted, with a `schedule_changed` disposition naming the new prompt, and
+queues the prompt of the new revision. A prompt that was already attempted
+stays as it is, and the new revision still prompts again (DEC-21, decided
+2026-11-15): leadership is always told about the new date.
 
 ### SR-NTF-16 CWL roster reports
 
@@ -2765,9 +3003,10 @@ an identity or a measure, outside the projections that the service rebuilds.
 | --- | --- | --- |
 | Dimensions | `dim_discord_user`, `dim_player_account`, `dim_clan`, `dim_discord_role`, `dim_discord_channel` | `INSERT`; `UPDATE` of labels and sync columns only: `display_name`, `player_name`, `clan_name`, `role_name`, `channel_name`, `last_synced_at`, `deleted_at` |
 | Dimensions | `dim_war` | `INSERT`; `UPDATE (war_kind)`, so that staff can attach a regular war to a custom event (SR-CUS-01) |
-| Dimensions | `dim_achievement`, `dim_raid_weekend`, `dim_clan_games_event`, `dim_coc_season`, `dim_leaderboard_monthly_period` | `INSERT` |
+| Dimensions | `dim_achievement`, `dim_raid_weekend`, `dim_coc_season`, `dim_leaderboard_monthly_period` | `INSERT` |
+| Dimensions | `dim_clan_games_event` | `INSERT`; `UPDATE (voided_at)`, set once (SR-CG-14) |
 | Dimensions | `dim_guild` | none: the operator seed creates it |
-| Facts | every `fact_*` table, `player_verification`, `war_participant`, `warning`, `warning_revocation`, `clan_membership_poll`, `war_poll`, `raid_poll`, `clan_games_counter_read`, `clan_games_participation_evidence`, `custom_roster_revision`, `custom_roster_account`, `cwl_plan_assignment`, `notification_kafka_receipt` | `INSERT` only, except the columns below |
+| Facts | every `fact_*` table, `player_verification`, `war_participant`, `warning`, `warning_revocation`, `clan_membership_poll`, `war_poll`, `raid_poll`, `cwl_group_poll`, `clan_games_counter_read`, `clan_games_participation_evidence`, `custom_roster_revision`, `custom_roster_account`, `cwl_plan_assignment`, `notification_kafka_receipt` | `INSERT` only, except the columns below |
 | Fact columns | `fact_api_fetch_attempt` | `UPDATE (completed_at, http_status, outcome, error_code)` |
 | Fact columns | `fact_war_attack` | `UPDATE (last_observed_at)` |
 | Fact columns | `fact_notification_dispatch_attempt` | `UPDATE (started_at, finished_at, outcome, recorded_at, discord_message_id, http_status, error_code)`, each set once (SR-NTF-09) |
@@ -2784,7 +3023,6 @@ an identity or a measure, outside the projections that the service rebuilds.
 | Workflow | `cwl_participating_clan`, `cwl_signup`, `custom_event_signup`, `cwl_plan_revision` | `INSERT`; plan `UPDATE (published_at, quality, source_kind, actor_user_key)` |
 | Workflow | `cwl_clan_day`, `cwl_round_war_reference` | `INSERT`; `UPDATE (war_key)` |
 | Workflow | `cwl_replan_request` | `INSERT`; `UPDATE (completed_plan_key)` |
-| Workflow | `cwl_bench_assignment` | `INSERT`; `UPDATE (war_day, assigned_at)` |
 | Workflow | `cwl_export_revision` | `INSERT`; `UPDATE (sheets_state)` |
 | Workflow | `cwl_export_signup_input` | `INSERT` |
 | Workflow | `cwl_sheet_destination` | `INSERT`; `UPDATE (lease_owner, lease_expires_at, fence, confirmed_sequence)` |

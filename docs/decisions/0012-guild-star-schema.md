@@ -97,9 +97,9 @@ PostgreSQL holds the invariants that one row or one index can state:
 - `CHECK` constraints that keep the columns of a row consistent with its
   status;
 - exclusion constraints, so that the link intervals of one account, its
-  membership periods in one clan, Clan Games events and reporting periods
-  cannot overlap (membership periods in different clans may, because each
-  clan is polled on its own cycle);
+  membership periods in one clan, Clan Games events that are not voided
+  and reporting periods cannot overlap (membership periods in different
+  clans may, because each clan is polled on its own cycle);
 - generated columns for values derived from the same row, such as the GMT
   month of a warning.
 

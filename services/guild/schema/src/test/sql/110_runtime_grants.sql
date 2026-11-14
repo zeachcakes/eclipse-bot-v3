@@ -83,7 +83,7 @@ BEGIN
         ('dim_discord_role', 'role_name'), ('dim_discord_role', 'last_synced_at'),
         ('dim_discord_role', 'deleted_at'), ('dim_discord_channel', 'channel_name'),
         ('dim_discord_channel', 'last_synced_at'), ('dim_discord_channel', 'deleted_at'),
-        ('dim_war', 'war_kind'),
+        ('dim_war', 'war_kind'), ('dim_clan_games_event', 'voided_at'),
         ('fact_api_fetch_attempt', 'completed_at'), ('fact_api_fetch_attempt', 'http_status'),
         ('fact_api_fetch_attempt', 'outcome'), ('fact_api_fetch_attempt', 'error_code'),
         ('fact_war_attack', 'last_observed_at'),
@@ -110,7 +110,6 @@ BEGIN
         ('clan_games_read_request', 'status'), ('clan_games_read_request', 'missed_at'),
         ('custom_event', 'state'), ('custom_event', 'war_key'), ('custom_event', 'associated_by'),
         ('custom_event', 'association_operation_id'), ('custom_event', 'association_reason'),
-        ('cwl_bench_assignment', 'war_day'), ('cwl_bench_assignment', 'assigned_at'),
         ('cwl_clan_day', 'war_key'), ('cwl_cycle', 'state'), ('cwl_cycle', 'ended_at'),
         ('cwl_export_revision', 'sheets_state'),
         ('cwl_sheet_destination', 'lease_owner'), ('cwl_sheet_destination', 'lease_expires_at'),
@@ -139,7 +138,8 @@ BEGIN
         ('guild_settings', 'clan_games_event_seconds'), ('guild_settings', 'clan_games_account_points_cap'),
         ('guild_settings', 'clan_games_refresh_seconds'),
         ('guild_settings', 'clan_games_checkpoint_tolerance_seconds'), ('guild_settings', 'kick_max_attempts'),
-        ('guild_settings', 'kick_retry_seconds'), ('guild_settings', 'leaderboard_next_policy_key'),
+        ('guild_settings', 'kick_retry_seconds'), ('guild_settings', 'welcome_sync_max_age_seconds'),
+        ('guild_settings', 'leaderboard_next_policy_key'),
         ('guild_settings', 'leaderboard_next_timezone_name'), ('guild_settings', 'leaderboard_policy_selected_at'),
         ('clan_collection_settings', 'enabled'), ('clan_collection_settings', 'membership_poll_seconds'),
         ('clan_collection_settings', 'war_poll_seconds'), ('clan_collection_settings', 'player_profile_seconds'),
@@ -232,7 +232,8 @@ BEGIN
             AND (c.relname LIKE 'fact\_%' OR c.relname IN ('player_verification', 'war_participant', 'warning',
                 'warning_revocation', 'clan_membership_poll', 'clan_games_counter_read',
                 'clan_games_participation_evidence', 'clan_games_member_account_input', 'custom_roster_revision',
-                'custom_roster_account', 'cwl_plan_assignment', 'notification_kafka_receipt', 'war_poll'))
+                'custom_roster_account', 'cwl_plan_assignment', 'notification_kafka_receipt', 'war_poll',
+                'raid_poll', 'cwl_group_poll'))
         ORDER BY c.relname
     LOOP
         BEGIN

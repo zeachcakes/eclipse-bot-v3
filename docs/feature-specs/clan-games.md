@@ -20,6 +20,12 @@ not overriding earned points.
 - **CG-001 — Event configuration.** Store the event's start, end, and per-account points
   cap in PostgreSQL. Automatically create events from configured schedule settings, with
   authorized manual event creation as fallback. Do not assume an API calendar exists.
+  The game has moved Clan Games, and staff can enter wrong dates. An authorized
+  configuration actor can then reschedule an event, with a reason (owner decision,
+  2026-11-14): the stored event is voided, not edited, and a manual event with the new
+  dates and cap replaces it. A voided event is kept with its evidence and collects and
+  assesses nothing more. Voiding says that the bot's record was wrong, not that the game
+  cancelled Clan Games. The schedule does not create the month of a voided event again.
 - **CG-002 — Relevant participation.** Count only points relevant to tracked clans.
   Clan Games participation stays locked to its starting participating clan; the current
   player-profile clan does not itself establish that event affiliation.
@@ -167,6 +173,9 @@ audit response. Configuration-audit access remains distinct from event-report ac
     a baseline or accept a manually entered score.
 8. A routine API call fails after a valid baseline. A later successful read can
     recover supported accumulated progress without counting the failed call as zero.
+8a. The game moves Clan Games by two days after the schedule created the event. Staff
+    reschedule it. The voided event and its reads remain, it is not assessed, the new
+    event names the event it replaces, and the schedule does not create that month again.
 9. Staff approve a mid-event ownership transfer while the point read is failing.
     The transfer waits. When it becomes effective after a successful read, retain
     the boundary evidence and split attribution without moving earlier results.
