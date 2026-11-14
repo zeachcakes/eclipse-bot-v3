@@ -23,13 +23,17 @@ selects the roster; the bot observes that decision.
 | WAR-002 | Each tracked clan has its own configured war channel/category and dedicated war role for pings, identified by stable Discord IDs. |
 | WAR-003 | A Discord member qualifies for the clan's war role when any currently linked account is on that war's roster. Compute the union across the member's accounts. |
 | WAR-004 | Retain the previous war role until the next roster is available, then reconcile against that roster. A failed or incomplete fetch must not be interpreted as an authoritative empty roster. |
-| WAR-005 | Automatically remind members with unused attacks eight and four hours before war end. Each clan's reminder schedule is independently configurable. |
+| WAR-005 | Automatically remind members with unused attacks eight and four hours before war end. Each clan's reminder schedule is independently configurable. When no roster account has an unused attack at send time, the reminder, or a catch-up, is not sent (owner decision, 2026-11-14). |
 | WAR-006 | Preserve all available war, roster, and attack evidence indefinitely for metrics, including opponents, historical TH matchups, stars, destruction, and other supplied fields. |
 | WAR-007 | Repeated collection must not turn one attack into several attacks or add successive snapshots of the same war totals. Preserve source and observation provenance. |
 | WAR-008 | Role reconciliation and notifications record attempts and outcomes. A planned role change or reminder is not evidence that Discord applied or delivered it. |
 
-The exact composition of reminder mentions remains open: individual mentions,
-role mentions, or a combination have not been selected.
+Reminder mentions (DEC-05, 2026-11-14): a reminder mentions each Discord member
+with a currently linked account that is on the roster and still has an unused
+attack when the send begins, and lists unlinked roster accounts with unused
+attacks by in-game name. It does not mention the war role. Members whose
+accounts have used all attacks are not mentioned. The current war is polled
+every 120 seconds by default, a configurable per-clan setting (DEC-04).
 
 ## Evidence and logical data grains
 
@@ -111,9 +115,9 @@ These are suggested workstreams, not created issues or claims of implementation.
 
 ## Explicitly open or deferred
 
-- The choice of individual mentions, war-role mentions, or a combination in
-  reminders is still open.
-- Live API coverage, collection intervals, and source-identity validation remain
+- Whether to keep war-log history (past wars without preparation/start times
+  or member attacks) was deferred by the owner on 2026-11-14 (GAP-10).
+- Live API coverage and source-identity validation remain
   implementation/evidence work. Missing evidence must not become an invented
   unused attack or an authoritative empty roster.
 - CWL planning and custom-event signup behavior are specified separately and

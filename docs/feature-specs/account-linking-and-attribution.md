@@ -19,9 +19,12 @@ wording, or a final physical database model.
 
 - **LINK-001 — Multiple accounts, one current owner.** A Discord member may link multiple
   Clash accounts. A Clash account may be linked to only one Discord identity at a time.
-- **LINK-002 — Primary and alts.** A member with linked accounts has one primary account;
-  the remaining linked accounts are alts. If the primary is unlinked while alts remain,
-  the member must choose a replacement. No replacement is chosen automatically.
+- **LINK-002 — Primary and alts.** A member with linked accounts has at most one primary
+  account; the remaining linked accounts are alts. If the member unlinks their primary
+  while alts remain, they must choose a replacement. No replacement is chosen
+  automatically. When an approved transfer takes a member's primary while alts remain,
+  the transfer completes and the member has no primary until they choose one of their
+  remaining accounts (DEC-02, 2026-11-14). Nobody else chooses it for them.
 - **LINK-003 — Initial eligibility.** A newly linked account must belong to a tracked
   clan. Later departure from every tracked clan does not automatically unlink it.
 - **LINK-004 — Verification.** Verify the player using their in-game API token. Store the
@@ -44,6 +47,9 @@ wording, or a final physical database model.
 - **LINK-010 — Same-profile continuity.** If an account is unlinked and later relinked to
   the same Discord profile, with no different owner in between, its member metrics
   continue. Activity collected during that unlinked gap also counts.
+  While the account stays unlinked, its activity and Clan Games requirement keep
+  counting for the former owner until a different Discord identity links it
+  (DEC-01, 2026-11-14). That later link starts a fresh period under LINK-011.
 - **LINK-011 — Different-profile fresh start.** Linking to a different Discord identity
   starts a fresh member-attribution period. Earlier activity remains attributed to the
   earlier member and is not rewritten or moved to the new member.
@@ -114,6 +120,12 @@ the private link-history rule.
 4. A member attempts to unlink their primary while another linked account remains.
     The operation requires their replacement choice and does not leave an invalid
     intermediate primary state visible as a completed operation.
+4a. Staff approve a transfer of member A's primary while A keeps two alts and has left
+    Discord. The transfer completes; A has no primary, both alts stay linked, and
+    current-link views show no primary for A until A chooses one.
+4b. A member unlinks an alt during Clan Games and nobody links it before the final
+    checkpoint. The account's points and prorated requirement still count toward that
+    member's assessment.
 5. A recipient verifies a currently owned account but has no staff approval. The bot
     does not transfer it. An ordinary member cannot approve that request.
 6. Staff approve a transfer during Clan Games, but the required API read fails. The
@@ -153,10 +165,9 @@ These are planning workstreams, not created GitHub issues:
 - The permitted age and revalidation policy for verification evidence.
 - How API freshness and the successful boundary observation relate to the recorded
   effective time, without claiming unavailable source occurrence timestamps.
-- Presentation of statistics while an account remains unlinked and its next owner is
-  not yet known. Same-owner gap continuity after relinking is already decided.
-- Primary-replacement user interaction when an approved transfer affects the previous
-  owner's primary account.
+- Presentation of statistics while an account remains unlinked. Attribution is decided:
+  they count for the former owner until a different owner links the account (DEC-01).
+- How a member without a primary (LINK-002, DEC-02) is prompted to choose one.
 
 These points do not reopen first-link backfill, same-owner gap counting, different-owner
 fresh starts, or the successful-refresh gate.

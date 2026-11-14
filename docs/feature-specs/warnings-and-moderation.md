@@ -72,6 +72,7 @@ specification does not supply a general moderation-action executor.
 | Member reads their own history | Show their warning and revocation history, including reasons; do not expose another subject's private history. |
 | Member has four valid warnings and receives a fifth within the same GMT month | Record the fifth warning and the initial kick decision; execution has its own attempt and result. |
 | The triggering command is retried or concurrent processing reaches the same threshold | Do not duplicate the warning or the initial kick decision for that event. |
+| The issuer loses their moderation role before an identical retry of a committed warning command | Return the stored warning; the retry applies nothing new, so it needs no new permission check (DEC-10, 2026-11-14). A new command or a retry with different arguments is still checked or rejected. |
 | The kick result is uncertain | Preserve uncertainty; do not claim that the member was kicked or apply confirmed-kick/rejoin behavior without evidence. Recovery policy is deferred. |
 | A confirmed kicked member rejoins within the same GMT month as the kick | Send a notice to the configured leadership channel. |
 | That member receives another warning after rejoining during the same GMT month | Record it and notify leadership; do not automatically kick them again for that warning. |

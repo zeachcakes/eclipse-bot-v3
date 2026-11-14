@@ -1,0 +1,137 @@
+import org.jooq.meta.jaxb.MatcherTransformType
+
+plugins {
+    id 'service-schema-conventions'
+}
+
+schemaDatabase {
+    schemaName = 'guild'
+    generatedPackage = 'com.clashofclans.eclipse.guild.jooq'
+    connectionKey = 'guild'
+    // One base table from each migration that creates tables, V1 to V8.
+    requiredTables = [
+        'dim_guild', 'account_link', 'dim_war', 'warning', 'fact_configuration_change',
+        'cwl_cycle', 'notification_operation', 'dim_leaderboard_monthly_period',
+    ]
+}
+
+// Discord snowflakes are unsigned 64-bit integers kept in a numeric domain, so
+// generated code uses BigInteger for them instead of jOOQ's default BigDecimal.
+//
+// Implicit join paths: jOOQ names a path after the table it reaches, so two
+// paths between the same tables get the same method name, and the generator
+// drops one of them with an "Ambiguous key name" warning. Many-to-many paths
+// are off: jOOQ treats every table with two foreign keys as a bridge, which
+// caused most of the collisions. The matchers below name the remaining
+// colliding to-one and to-many paths by their meaning.
+jooq {
+    configurations {
+        main {
+            generationTool {
+                generator {
+                    database {
+                        forcedTypes {
+                            forcedType {
+                                name = 'DECIMAL_INTEGER'
+                                includeTypes = '(?i:(guild\\.)?discord_snowflake)'
+                            }
+                        }
+                    }
+                    generate {
+                        implicitJoinPathsManyToMany = false
+                    }
+                    strategy {
+                        matchers {
+                            foreignKeys {
+                                // account_link.transfer_request_key: the transfer that created the link.
+                                foreignKey {
+                                    expression = 'account_link_transfer_request'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'transferRequest'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'resultingLink'
+                                    }
+                                }
+                                // account_transfer_request.source_link_key: the link the transfer ends.
+                                foreignKey {
+                                    expression = 'account_transfer_request_source_link_key_.*_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'sourceLink'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'outgoingTransferRequest'
+                                    }
+                                }
+                                // fact_moderation_action_transition: the warning that decided or
+                                // rearmed the kick, and the revoked warning that cancelled it.
+                                foreignKey {
+                                    expression = 'moderation_transition_trigger_warning_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'triggerWarning'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'triggeredModerationTransition'
+                                    }
+                                }
+                                foreignKey {
+                                    expression = 'moderation_transition_revoked_warning_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'revokedWarning'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'cancelledModerationTransition'
+                                    }
+                                }
+                                // fact_notification_dispatch_attempt.replaced_dispatch_key: the
+                                // edit attempt that a report create replaces.
+                                foreignKey {
+                                    expression = 'notification_dispatch_replaced_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'replacedDispatch'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'replacementDispatch'
+                                    }
+                                }
+                                // fact_notification_disposition.superseded_by_operation_key.
+                                foreignKey {
+                                    expression = 'notification_disposition_superseded_by_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'supersededBy'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'supersededDisposition'
+                                    }
+                                }
+                                foreignKey {
+                                    expression = 'dim_leaderboard_monthly_period_previous_period_key_fkey'
+                                    pathMethodName {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'previousPeriod'
+                                    }
+                                    pathMethodNameInverse {
+                                        transform = MatcherTransformType.AS_IS
+                                        expression = 'nextPeriod'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

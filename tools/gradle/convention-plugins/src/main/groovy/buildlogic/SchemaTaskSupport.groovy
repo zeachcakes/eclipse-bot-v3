@@ -79,7 +79,16 @@ final class SchemaTaskSupport {
             generator: generator.name, database: database.name,
             includes: database.includes, excludes: database.excludes,
             records: flags.records, pojos: flags.pojos, immutablePojos: flags.immutablePojos,
-            fluentSetters: flags.fluentSetters, indexes: flags.indexes, deprecated: flags.deprecated]
+            fluentSetters: flags.fluentSetters, indexes: flags.indexes, deprecated: flags.deprecated,
+            implicitJoinPathsToOne: flags.implicitJoinPathsToOne,
+            implicitJoinPathsToMany: flags.implicitJoinPathsToMany,
+            implicitJoinPathsManyToMany: flags.implicitJoinPathsManyToMany,
+            // Settings that change generated names and types; the jOOQ JAXB types render as XML.
+            // The jOOQ plugin clears a default strategy name while it generates, so read
+            // a missing name as the default. Map properties reject null values.
+            forcedTypes: database.forcedTypes.collect { it.toString() },
+            strategyName: generator.strategy?.name ?: 'org.jooq.codegen.DefaultGeneratorStrategy',
+            strategyMatchers: generator.strategy?.matchers?.toString() ?: '']
     }
 
     static String generatedSourcePattern(String directory) {

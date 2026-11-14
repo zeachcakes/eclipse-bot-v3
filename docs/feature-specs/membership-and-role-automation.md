@@ -1,6 +1,7 @@
 # Membership and role automation
 
 Status: agreed target behavior, with the lifecycle edges below explicitly open.
+The rejoin and late-link onboarding edges were decided on 2026-11-14 (DEC-17).
 This specifies intended behavior and evidence needs, not completed live CoC or
 Discord integration and not a final physical schema.
 
@@ -23,7 +24,9 @@ their own roster lifecycle in [regular wars](regular-wars.md).
 - **MEM-002:** The initial clan-membership polling interval is two minutes and
   is configurable. For one clan, this is approximately 720 membership requests
   per day, excluding other API operations. This is not an instantaneous-change
-  guarantee or a player-profile/achievement polling schedule.
+  guarantee or a player-profile/achievement polling schedule. Player profiles
+  and town hall levels outside Clan Games are read every 3,600 seconds by
+  default, a configurable per-clan setting (DEC-04, 2026-11-14).
 - **MEM-003:** Only successful, complete roster evidence can establish an
   observed membership departure. Failure, incomplete pagination, or missing
   collection is not evidence that a clan became empty.
@@ -52,8 +55,14 @@ their own roster lifecycle in [regular wars](regular-wars.md).
   and grant Eclipse, New Joinee, applicable clan roles, and applicable TH roles.
   Eligibility and verification follow the account-linking specification.
 - **MEM-012:** The initial New Joinee duration is seven days from the applicable
-  Discord join, not seven days from linking. The governing join occurrence after
-  a rejoin and treatment of a first link after that period remain open.
+  Discord join, not seven days from linking. The applicable join is the
+  member's latest accepted join (DEC-17, 2026-11-14); each stay is assessed on
+  its own. When a member rejoins with retained eligible links, those links count
+  as the first eligible link of the new stay at the rejoin: remove Applicants
+  and grant Eclipse, New Joinee until rejoin plus seven days, and applicable
+  clan/TH roles, without a new verification. When the first eligible link of a
+  stay comes after join plus seven days, grant Eclipse and the clan/TH roles but
+  no New Joinee.
 - **MEM-013:** Reconciliation derives the latest complete desired role state
   and compares it with confirmed Discord state before acting. Replayed or delayed
   work must not blindly apply an old addition/removal or remove a role another
@@ -99,7 +108,7 @@ provides the trigger for the agreed Eclipse/New Joinee/clan/TH reconciliation.
 TH requirements use supported current profile evidence across every current
 link. Changing the primary account alone must not discard roles still required
 by alts. The New Joinee deadline needs the relevant join occurrence and duration
-policy recorded as evidence; unresolved join-selection behavior must stay open.
+policy recorded as evidence; the latest accepted join governs (MEM-012).
 
 The logical data needs are current and historical account associations, observed
 membership/coverage, current TH evidence, Discord presence, role configuration,
@@ -139,11 +148,13 @@ unrelated roles and moderator permissions is outside this automation's scope.
 | One TH16 account unlinks while another TH16 account remains | TH16 stays required. |
 | A player-profile request fails | Do not treat failure as a new TH value or automatically erase the supported TH requirement. |
 | A new Discord member joins | Create join evidence and initiate the configured welcome and Applicants operations, each with its own delivery outcome. |
-| The member's first eligible, verified link succeeds | Remove Applicants and require Eclipse, New Joinee, and applicable clan/TH roles, subject to the explicit late-link lifecycle decision below. |
+| The member's first eligible, verified link succeeds | Remove Applicants and require Eclipse, New Joinee, and applicable clan/TH roles. |
+| The first eligible link occurs ten days after the latest join | Remove Applicants and require Eclipse and applicable clan/TH roles; New Joinee is not granted because join plus seven days has passed. |
+| A member with retained eligible links rejoins Discord | At the accepted rejoin, remove Applicants and require Eclipse, New Joinee until rejoin plus seven days, and applicable clan/TH roles; no new verification is required. |
 | An ordinary first link occurs two days after the relevant Discord join | The initial New Joinee deadline is join plus seven days, not link plus seven days. |
 | A delayed old role-change operation arrives after newer requirements | Reconcile the latest desired state instead of restoring the stale role. |
 | A configured role is renamed | Continue identifying it by its Discord ID. |
-| A Discord member leaves and later returns | Preserve links and historical data. Historical staff roles alone do not restore current authority; unresolved onboarding/expiry behavior is not guessed. |
+| A Discord member leaves and later returns | Preserve links and historical data. Historical staff roles alone do not restore current authority; onboarding follows the rejoin row above. |
 
 ## Dependencies
 
@@ -173,15 +184,10 @@ These are proposed workstreams, not published issues or a completed runtime.
 
 ## Open and deferred decisions
 
-- Which Discord join occurrence governs New Joinee after a rejoin.
-- What to do when the first eligible account link occurs after New Joinee would
-  already have expired.
-- How retained links on rejoin interact with first-link onboarding; do not
-  silently treat them as a new verification or unlink them.
 - Eclipse/Applicants behavior after every account link disappears. No automatic
   removal or fallback policy has been agreed for that case.
-- Player-profile/TH polling cadence, freshness tolerances, and precise boundary
-  policy for membership observations and collection gaps.
+- Freshness tolerances and precise boundary policy for membership observations
+  and collection gaps. The player-profile/TH cadence is decided under MEM-002.
 - Whether departure confirmation should require a second successful poll.
 - Operational recovery when a configured role/channel is deleted or permission
   to apply a role is missing; do not invent name-based replacement behavior.
